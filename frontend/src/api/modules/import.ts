@@ -20,6 +20,6 @@ export async function createImportJob(files: File[]) {
 }
 
 export async function syncLocalVault() {
-  const { data } = await apiClient.post<{ item: ImportJob; job_id?: string }>('/import/sync-local')
+  const { data } = await apiClient.post<{ item: ImportJob; job_id?: string; message?: string; meta: ImportJobListResponse['meta'] }>('/import/sync-local')
   return data
 }

@@ -461,7 +461,7 @@ class VaultRepository:
         self._ensure_db()
 
         cached_signature = self._read_cached_signature()
-        if not force_refresh and self.demo_data_only and self._has_cached_books():
+        if self.demo_data_only and self._has_cached_books():
             # 演示环境不依赖服务器上的原始 Markdown，只从已同步的 SQLite 缓存启动。
             data = self._load_from_db()
             self._signature = signature

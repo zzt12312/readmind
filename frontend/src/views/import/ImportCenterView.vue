@@ -9,7 +9,7 @@ import AppStatusBadge from '@/components/base/AppStatusBadge.vue'
 import { useImportStore } from '@/stores/import'
 
 const importStore = useImportStore()
-const { jobs, loading, uploading } = storeToRefs(importStore)
+const { jobs, loading, uploading, meta } = storeToRefs(importStore)
 
 onMounted(() => {
   void importStore.load()
@@ -36,7 +36,7 @@ async function handleUpload(options: UploadRequestOptions) {
 async function handleSyncLocal() {
   try {
     await importStore.syncLocal()
-    ElMessage.success('已经重新扫描本地 Obsidian 书库')
+    ElMessage.success(meta.value.demo_mode ? '演示数据已经就绪' : '已经重新扫描本地 Obsidian 书库')
   } catch {
     ElMessage.error('同步本地书库失败')
   }
@@ -47,16 +47,30 @@ async function handleSyncLocal() {
   <div class="import-view">
     <AppCard class="import-view__hero">
       <div>
-        <h2>把你的 Obsidian 阅读笔记放进来</h2>
-        <p>支持 markdown 文件和压缩包导入，系统会自动完成结构化解析、标签提取和 AI 整理。</p>
+        <h2>{{ meta.demo_mode ? '演示数据已经准备好' : '把你的 Obsidian 阅读笔记放进来' }}</h2>
+        <p>
+          {{
+            meta.demo_mode
+              ? meta.description
+              : '支持 markdown 文件和压缩包导入，系统会自动完成结构化解析、标签提取和 AI 整理。'
+          }}
+        </p>
         <div class="import-view__hero-actions">
-          <el-button type="primary" round :loading="uploading" @click="handleSyncLocal">同步本地书库</el-button>
-          <span>/Users/taozhang/Documents/Obsidian Vault/书籍阅读</span>
+          <el-button type="primary" round :loading="uploading" @click="handleSyncLocal">
+            {{ meta.demo_mode ? '刷新演示数据' : '同步本地书库' }}
+          </el-button>
+          <span>{{ meta.source_label }}</span>
         </div>
       </div>
       <el-upload drag :http-request="handleUpload" :show-file-list="false" :multiple="true">
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-        <div class="el-upload__text">{{ uploading ? '正在创建导入任务...' : '拖拽文件到这里，或点击上传' }}</div>
+        <div class="el-upload__text">
+          {{
+            uploading
+              ? '正在创建导入任务...'
+              : (meta.demo_mode ? '演示模式下会模拟导入流程，便于体验页面交互' : '拖拽文件到这里，或点击上传')
+          }}
+        </div>
       </el-upload>
     </AppCard>
 

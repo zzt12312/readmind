@@ -18,11 +18,12 @@ const globalKeyword = ref('')
 let embeddingPollTimer: number | null = null
 
 const providerLabel = computed(() => {
-  return 'DeepSeek'
+  return llmHealth.value?.demo_mode ? '演示站' : 'DeepSeek'
 })
 
 const embeddingLabel = computed(() => {
   if (!llmHealth.value) return 'Embedding 未知'
+  if (llmHealth.value.demo_mode && llmHealth.value.embedding_status !== 'ready') return '演示检索已就绪'
   if (llmHealth.value.embedding_status === 'ready') return 'Embedding 已就绪'
   if (llmHealth.value.embedding_status === 'loading') return 'Embedding 预热中'
   if (llmHealth.value.embedding_status === 'fallback') return 'Embedding 降级中'
@@ -39,6 +40,7 @@ const embeddingClass = computed(() => {
 
 const showEmbeddingWarmup = computed(() => {
   if (!llmHealth.value) return false
+  if (llmHealth.value.demo_mode) return false
   return llmHealth.value.embedding_status !== 'ready'
 })
 
@@ -60,6 +62,9 @@ const llmLabel = computed(() => {
   }
   if (!llmHealth.value) {
     return '模型状态未知'
+  }
+  if (llmHealth.value.demo_mode) {
+    return '演示站已就绪'
   }
   if (!llmHealth.value.api_key_loaded) {
     return `未配置 ${providerLabel.value}`

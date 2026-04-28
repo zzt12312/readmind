@@ -4,6 +4,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from ..services.job_repository import job_repository
 from ..services.task_runner import enqueue_vault_sync
+from ..services.vault_parser import vault_repository
 
 import_bp = Blueprint("import", __name__)
 
@@ -53,11 +54,40 @@ def serialize_async_import_job(job: dict) -> dict:
     }
 
 
+def build_import_meta() -> dict:
+    demo_mode = bool(current_app.config.get("DEMO_DATA_ONLY", False))
+    return {
+        "demo_mode": demo_mode,
+        "source_label": "演示数据集（已预置真实阅读缓存）" if demo_mode else "本地 Obsidian 书籍阅读目录",
+        "description": (
+            "当前演示站使用预置缓存数据，方便完整体验书库、问答、图谱和复习功能。"
+            if demo_mode
+            else "系统会重新扫描本地 Obsidian 阅读目录，并更新书库缓存。"
+        ),
+    }
+
+
 @import_bp.get("/jobs")
 def jobs():
-    async_jobs = job_repository.list_jobs(job_types=["vault_sync"], limit=20)
-    items = [serialize_async_import_job(job) for job in async_jobs] + [serialize_import_job(job) for job in JOBS]
-    return jsonify({"items": items})
+    demo_mode = bool(current_app.config.get("DEMO_DATA_ONLY", False))
+    async_jobs = [] if demo_mode else job_repository.list_jobs(job_types=["vault_sync"], limit=20)
+    items = [serialize_async_import_job(job) for job in async_jobs]
+
+    if demo_mode:
+        data = vault_repository.load()
+        items.append(
+            {
+                "id": "demo-import",
+                "file_name": "演示数据集（静态缓存）",
+                "status": "success",
+                "progress": 100,
+                "result": f"{data['stats']['book_count']} 本 / {data['stats']['note_count']} 条",
+            }
+        )
+    else:
+        items.extend(serialize_import_job(job) for job in JOBS)
+
+    return jsonify({"items": items, "meta": build_import_meta()})
 
 
 @import_bp.post("/jobs")
@@ -71,6 +101,17 @@ def create_job():
 
     for uploaded_file in uploaded_files:
         filename = uploaded_file.filename or f"import-{next(_job_id)}.md"
+        if current_app.config.get("DEMO_DATA_ONLY", False):
+            created_jobs.append(
+                {
+                    "id": next(_job_id),
+                    "file_name": filename,
+                    "status": "success",
+                    "progress": 100,
+                    "result": "演示模式：已模拟导入",
+                }
+            )
+            continue
         status = "success" if filename.endswith((".md", ".markdown", ".zip")) else "failed"
         created_jobs.append(
             {
@@ -84,10 +125,21 @@ def create_job():
 
     JOBS[:0] = created_jobs
 
-    return jsonify({"items": created_jobs}), 201
+    return jsonify({"items": created_jobs, "meta": build_import_meta()}), 201
 
 
 @import_bp.post("/sync-local")
 def sync_local_vault():
+    if current_app.config.get("DEMO_DATA_ONLY", False):
+        data = vault_repository.load()
+        item = {
+            "id": "demo-sync",
+            "file_name": "演示数据集（静态缓存）",
+            "status": "success",
+            "progress": 100,
+            "result": f"{data['stats']['book_count']} 本 / {data['stats']['note_count']} 条",
+        }
+        return jsonify({"item": item, "message": "演示数据已就绪，无需重新同步", "meta": build_import_meta()})
+
     job = enqueue_vault_sync(current_app._get_current_object())
-    return jsonify({"item": serialize_async_import_job(job), "job_id": job["id"]}), 202
+    return jsonify({"item": serialize_async_import_job(job), "job_id": job["id"], "meta": build_import_meta()}), 202

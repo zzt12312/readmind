@@ -1,5 +1,6 @@
 export interface LlmHealth {
   provider: string
+  demo_mode: boolean
   base_url: string
   model: string
   api_key_loaded: boolean

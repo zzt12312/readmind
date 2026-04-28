@@ -14,6 +14,7 @@ def llm_health():
 
     payload = {
         "provider": "deepseek",
+        "demo_mode": bool(current_app.config.get("DEMO_DATA_ONLY", False)),
         "base_url": client.base_url,
         "model": client.model,
         "api_key_loaded": api_key_loaded,

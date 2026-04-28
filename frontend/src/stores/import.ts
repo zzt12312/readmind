@@ -1,11 +1,16 @@
 import { defineStore } from 'pinia'
 import { fetchJobDetail } from '@/api/modules/jobs'
 import { createImportJob, fetchImportJobs, syncLocalVault } from '@/api/modules/import'
-import type { ImportJob } from '@/types/import'
+import type { ImportJob, ImportMeta } from '@/types/import'
 
 export const useImportStore = defineStore('import', {
   state: () => ({
     jobs: [] as ImportJob[],
+    meta: {
+      demo_mode: false,
+      source_label: '本地 Obsidian 书籍阅读目录',
+      description: '',
+    } as ImportMeta,
     loading: false,
     uploading: false,
   }),
@@ -15,6 +20,7 @@ export const useImportStore = defineStore('import', {
       try {
         const data = await fetchImportJobs()
         this.jobs = data.items
+        this.meta = data.meta
       } finally {
         this.loading = false
       }
@@ -32,6 +38,7 @@ export const useImportStore = defineStore('import', {
       this.uploading = true
       try {
         const response = await syncLocalVault()
+        this.meta = response.meta
         this.jobs = [response.item, ...this.jobs.filter((job) => job.id !== response.item.id)]
         if (response.job_id) {
           await this.pollSyncJob(response.job_id)
