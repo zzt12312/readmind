@@ -10,7 +10,7 @@ import AppEmpty from '@/components/base/AppEmpty.vue'
 import AppSearchInput from '@/components/base/AppSearchInput.vue'
 import { useBooksStore } from '@/stores/books'
 import { useNotesStore } from '@/stores/notes'
-import type { NoteInsightReference, NoteInsightSections } from '@/types/note'
+import type { NoteInsightReference, NoteInsightSections, QueryRewriteSummary } from '@/types/note'
 import { highlightText } from '@/utils/text'
 
 const keyword = ref('')
@@ -32,6 +32,7 @@ const { items, insight, filters, pagination, loading, activeBookId, activeNoteId
 const { items: bookItems } = storeToRefs(booksStore)
 
 const notes = computed(() => items.value)
+const queryRewrite = computed<QueryRewriteSummary | null>(() => insight.value.query_rewrite ?? null)
 const hasInsightContext = computed(
   () =>
     Boolean(route.query.bookId) ||
@@ -332,6 +333,21 @@ async function loadMore() {
 
       <div v-loading="loading" class="note-workbench__center">
         <p class="note-workbench__result-count">当前结果 {{ pagination.total }} 条</p>
+        <section v-if="queryRewrite" class="note-workbench__rewrite-tip">
+          <strong>检索扩展</strong>
+          <p>系统识别到你在问 <span>{{ queryRewrite.applied_rules.join('、') }}</span>，所以补充检索了这些相关概念：</p>
+          <div class="note-workbench__tag-list">
+            <el-tag
+              v-for="term in queryRewrite.expansion_terms.slice(0, 6)"
+              :key="term"
+              round
+              effect="plain"
+              type="success"
+            >
+              {{ term }}
+            </el-tag>
+          </div>
+        </section>
         <AppCard
           v-for="note in notes"
           :key="note.id"
@@ -402,6 +418,15 @@ async function loadMore() {
           <ul class="note-workbench__insight-list">
             <li v-for="suggestion in insightSections.action_suggestions" :key="suggestion">{{ suggestion }}</li>
           </ul>
+        </section>
+        <section v-if="queryRewrite" class="note-workbench__insight">
+          <strong>本次检索如何扩展问题</strong>
+          <p>为了更稳地召回相关笔记，系统额外补充了以下概念词。</p>
+          <div class="note-workbench__tag-list">
+            <el-tag v-for="term in queryRewrite.expansion_terms.slice(0, 8)" :key="term" round effect="plain">
+              {{ term }}
+            </el-tag>
+          </div>
         </section>
         <section v-if="insightReferences.length" class="note-workbench__insight">
           <strong>引用依据</strong>
@@ -500,6 +525,29 @@ async function loadMore() {
   margin: 0;
   color: var(--text-tertiary);
   font-size: 0.9rem;
+}
+
+.note-workbench__rewrite-tip {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(47, 93, 80, 0.12);
+  background: rgba(47, 93, 80, 0.06);
+}
+
+.note-workbench__rewrite-tip strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.note-workbench__rewrite-tip p {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.note-workbench__rewrite-tip span {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .note-workbench__note-card {

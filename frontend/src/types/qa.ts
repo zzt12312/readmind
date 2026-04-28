@@ -1,3 +1,10 @@
+export interface QueryRewriteSummary {
+  original: string
+  applied_rules: string[]
+  expansion_terms: string[]
+  variants: string[]
+}
+
 export interface QaReference {
   book: string
   book_id: number
@@ -32,6 +39,7 @@ export interface QaResponse {
   generation_mode?: 'llm' | 'fallback'
   retrieval_mode?: string
   fallback_reason?: string
+  query_rewrite?: QueryRewriteSummary | null
 }
 
 export interface QaStatusPayload {
@@ -41,7 +49,7 @@ export interface QaStatusPayload {
 }
 
 export interface QaStreamEventHandlers {
-  onMeta?: (payload: { question: string; references: QaReference[]; retrieval_mode?: string }) => void
+  onMeta?: (payload: { question: string; references: QaReference[]; retrieval_mode?: string; query_rewrite?: QueryRewriteSummary | null }) => void
   onStatus?: (payload: QaStatusPayload) => void
   onDelta?: (payload: { content: string }) => void
   onDone?: (payload: QaResponse) => void

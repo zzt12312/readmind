@@ -38,6 +38,7 @@ const latestAssistantMessage = computed(() => {
 })
 
 const latestReferences = computed(() => latestAssistantMessage.value?.references ?? [])
+const queryRewrite = computed(() => qaStore.queryRewrite)
 const statusTone = computed(() => {
   if (status.value.phase === 'failed') return 'danger'
   if (status.value.phase === 'fallback') return 'warning'
@@ -324,6 +325,22 @@ watch(
           </div>
         </div>
 
+        <div v-if="queryRewrite" class="qa-view__rewrite-tip">
+          <strong>检索扩展</strong>
+          <p>系统识别到你在追问 <span>{{ queryRewrite.applied_rules.join('、') }}</span>，所以额外补充了这些概念来扩大召回：</p>
+          <div class="qa-view__rewrite-tags">
+            <el-tag
+              v-for="term in queryRewrite.expansion_terms.slice(0, 8)"
+              :key="term"
+              round
+              effect="plain"
+              type="success"
+            >
+              {{ term }}
+            </el-tag>
+          </div>
+        </div>
+
         <p v-if="fallbackReason" class="qa-view__status-tip qa-view__status-tip--warning">
           模型暂时不可用，当前已自动切换到回退回答。{{ fallbackReason }}
         </p>
@@ -591,6 +608,36 @@ watch(
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.qa-view__rewrite-tip {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(47, 93, 80, 0.12);
+  background: rgba(47, 93, 80, 0.05);
+}
+
+.qa-view__rewrite-tip strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.qa-view__rewrite-tip p {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.qa-view__rewrite-tip span {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.qa-view__rewrite-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .qa-view__conversation {

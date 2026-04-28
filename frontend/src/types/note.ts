@@ -10,6 +10,13 @@ export interface NoteItem {
   source_path?: string
 }
 
+export interface QueryRewriteSummary {
+  original: string
+  applied_rules: string[]
+  expansion_terms: string[]
+  variants: string[]
+}
+
 export interface NoteInsightReference {
   book: string
   chapter: string
@@ -31,6 +38,7 @@ export interface NoteInsight {
   references?: NoteInsightReference[]
   retrieval_mode?: string
   sections?: NoteInsightSections
+  query_rewrite?: QueryRewriteSummary | null
 }
 
 export interface NoteFilters {

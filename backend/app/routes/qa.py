@@ -84,6 +84,7 @@ def ask_stream():
                 "question": fallback["question"],
                 "references": fallback["references"],
                 "retrieval_mode": retrieval_mode,
+                "query_rewrite": fallback.get("query_rewrite"),
             },
         )
         yield sse_event(
@@ -154,6 +155,7 @@ def ask_stream():
                 "generation_mode": generation_mode,
                 "retrieval_mode": retrieval_mode,
                 "fallback_reason": fallback_reason,
+                "query_rewrite": fallback.get("query_rewrite"),
             },
         )
 
