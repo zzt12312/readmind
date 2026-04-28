@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from ..services.vault_parser import build_review_overview, build_review_payload, vault_repository
+from ..services.vault_parser import build_review_overview, build_review_payload_with_scope, vault_repository
 
 review_bp = Blueprint("review", __name__)
 
@@ -8,7 +8,9 @@ review_bp = Blueprint("review", __name__)
 @review_bp.get("/today")
 def today():
     data = vault_repository.load()
-    return jsonify(build_review_payload(data))
+    tag = request.args.get("tag", "", type=str)
+    book_id = request.args.get("book_id", type=int)
+    return jsonify(build_review_payload_with_scope(data, tag=tag, book_id=book_id))
 
 
 @review_bp.post("/rate")

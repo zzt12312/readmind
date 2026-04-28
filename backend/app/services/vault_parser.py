@@ -1723,9 +1723,24 @@ def build_review_overview(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_review_payload(data: dict[str, Any]) -> dict[str, Any]:
+    return build_review_payload_with_scope(data)
+
+
+def build_review_payload_with_scope(
+    data: dict[str, Any],
+    *,
+    tag: str = "",
+    book_id: int | None = None,
+) -> dict[str, Any]:
     notes = data["notes"]
+    if book_id is not None:
+        notes = [note for note in notes if note["book_id"] == book_id]
+    if tag:
+        notes = [note for note in notes if tag in note.get("tags", [])]
+
     progress_map = vault_repository.get_review_progress_map([note["id"] for note in notes]) if notes else {}
-    overview = build_review_overview(data)
+    scoped_data = {**data, "notes": notes}
+    overview = build_review_overview(scoped_data)
     now = datetime.now()
 
     scored_notes: list[tuple[tuple[int, float, int], dict[str, Any], dict[str, Any] | None]] = []
@@ -1752,6 +1767,10 @@ def build_review_payload(data: dict[str, Any]) -> dict[str, Any]:
                 {"label": "连续复习", "value": f"{overview['streak_days']} 天"},
                 {"label": "掌握率", "value": overview["mastery_rate"]},
             ],
+            "scope": {
+                "tag": tag,
+                "book_id": book_id,
+            },
             "card": {
                 "id": 0,
                 "book_id": 0,
@@ -1759,6 +1778,7 @@ def build_review_payload(data: dict[str, Any]) -> dict[str, Any]:
                 "question": "",
                 "source": "",
                 "answer": "",
+                "tags": [],
                 "review_count": 0,
                 "mastery_score": 0,
                 "last_reviewed_at": "",
@@ -1775,6 +1795,7 @@ def build_review_payload(data: dict[str, Any]) -> dict[str, Any]:
             "question": "这条摘录最值得复述的核心观点是什么？",
             "source": f"{note['book_title']} · {note['chapter'] or '未分章节'}",
             "answer": note["excerpt"],
+            "tags": note.get("tags", []),
             "review_count": int((progress or {}).get("review_count") or 0),
             "mastery_score": int((progress or {}).get("mastery_score") or 0),
             "last_reviewed_at": (progress or {}).get("last_reviewed_at", ""),
@@ -1789,6 +1810,10 @@ def build_review_payload(data: dict[str, Any]) -> dict[str, Any]:
             {"label": "连续复习", "value": f"{overview['streak_days']} 天"},
             {"label": "掌握率", "value": overview["mastery_rate"]},
         ],
+        "scope": {
+            "tag": tag,
+            "book_id": book_id,
+        },
         "card": cards[0],
         "cards": cards,
     }

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppCard from '@/components/base/AppCard.vue'
 import { useReviewStore } from '@/stores/review'
 
+const route = useRoute()
 const router = useRouter()
 const reviewStore = useReviewStore()
 const { loading, submitting } = storeToRefs(reviewStore)
@@ -14,6 +15,7 @@ const progressText = computed(() => reviewStore.progressText)
 const answerVisible = computed(() => reviewStore.answerVisible)
 const hasCards = computed(() => reviewStore.total > 0 && reviewStore.completedCount < reviewStore.total)
 const feedbackMessage = computed(() => reviewStore.feedbackMessage)
+const activeScope = computed(() => reviewStore.scope)
 const reviewMeta = computed(() => {
   if (!card.value.id) {
     return []
@@ -30,9 +32,25 @@ const reviewMeta = computed(() => {
   ]
 })
 
+async function loadScopedReview() {
+  const tag = route.query.tag ? String(route.query.tag) : undefined
+  const bookId = route.query.bookId ? Number(route.query.bookId) : undefined
+  await reviewStore.load({
+    tag,
+    book_id: Number.isNaN(bookId) ? undefined : bookId,
+  })
+}
+
 onMounted(() => {
-  void reviewStore.load()
+  void loadScopedReview()
 })
+
+watch(
+  () => route.query,
+  () => {
+    void loadScopedReview()
+  },
+)
 
 function jumpToNote() {
   if (!card.value.book_id || !card.value.note_id) return
@@ -42,6 +60,21 @@ function jumpToNote() {
       bookId: String(card.value.book_id),
       noteId: String(card.value.note_id),
     },
+  })
+}
+
+function reviewByTag(tag: string) {
+  void router.push({
+    path: '/review',
+    query: {
+      tag,
+    },
+  })
+}
+
+function clearScope() {
+  void router.push({
+    path: '/review',
   })
 }
 </script>
@@ -56,12 +89,31 @@ function jumpToNote() {
     </section>
 
     <AppCard v-loading="loading" class="review-view__card">
+      <div v-if="activeScope.tag || activeScope.book_id" class="review-view__scope-tip">
+        <div>
+          <strong>当前复习范围</strong>
+          <p v-if="activeScope.tag">按主题复习：{{ activeScope.tag }}</p>
+          <p v-else-if="activeScope.book_id">按单本书复习</p>
+        </div>
+        <el-button text @click="clearScope">查看全部复习卡片</el-button>
+      </div>
       <template v-if="hasCards">
       <p class="review-view__eyebrow">{{ progressText }}</p>
       <h2>{{ card.question }}</h2>
       <p class="review-view__source">来源：{{ card.source }}</p>
       <div class="review-view__meta">
         <span v-for="item in reviewMeta" :key="item">{{ item }}</span>
+      </div>
+      <div v-if="card.tags.length" class="review-view__tags">
+        <el-tag
+          v-for="tag in card.tags.slice(0, 6)"
+          :key="tag"
+          round
+          effect="plain"
+          @click="reviewByTag(tag)"
+        >
+          {{ tag }}
+        </el-tag>
       </div>
 
       <div class="review-view__answer" :class="{ 'is-hidden': !answerVisible }">
@@ -117,6 +169,22 @@ function jumpToNote() {
   padding: 28px;
 }
 
+.review-view__scope-tip {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(47, 93, 80, 0.06);
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.review-view__scope-tip p {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+}
+
 .review-view__eyebrow {
   margin: 0 0 8px;
   color: var(--brand-primary);
@@ -144,6 +212,13 @@ function jumpToNote() {
   background: rgba(47, 93, 80, 0.08);
   color: var(--text-secondary);
   font-size: 0.9rem;
+}
+
+.review-view__tags {
+  margin: 0 0 18px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .review-view__answer {

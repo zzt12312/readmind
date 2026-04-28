@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { fetchTodayReview, submitReviewRating } from '@/api/modules/review'
-import type { ReviewCard, ReviewLevel, ReviewSummaryItem } from '@/types/review'
+import { fetchScopedReview, fetchTodayReview, submitReviewRating } from '@/api/modules/review'
+import type { ReviewCard, ReviewLevel, ReviewScope, ReviewSummaryItem } from '@/types/review'
 
 const emptyCard: ReviewCard = {
   id: 0,
@@ -9,6 +9,7 @@ const emptyCard: ReviewCard = {
   question: '',
   source: '',
   answer: '',
+  tags: [],
   review_count: 0,
   mastery_score: 0,
   last_reviewed_at: '',
@@ -30,6 +31,10 @@ export const useReviewStore = defineStore('review', {
     loading: false,
     submitting: false,
     feedbackMessage: '',
+    scope: {
+      tag: '',
+      book_id: null,
+    } as ReviewScope,
   }),
   getters: {
     card(state) {
@@ -62,12 +67,13 @@ export const useReviewStore = defineStore('review', {
     },
   },
   actions: {
-    async load() {
+    async load(filters?: { tag?: string; book_id?: number }) {
       this.loading = true
       try {
-        const data = await fetchTodayReview()
+        const data = filters?.tag || filters?.book_id ? await fetchScopedReview(filters) : await fetchTodayReview()
         this.summary = data.summary
         this.cards = data.cards.length > 0 ? data.cards : data.card.id ? [data.card] : []
+        this.scope = data.scope
         this.currentIndex = 0
         this.completedCount = 0
         this.mastery = { low: 0, medium: 0, high: 0 }

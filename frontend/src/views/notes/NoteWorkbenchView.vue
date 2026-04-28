@@ -185,6 +185,15 @@ function askCurrentBook() {
   })
 }
 
+function reviewByTopic(topic: string) {
+  void router.push({
+    path: '/review',
+    query: {
+      tag: topic,
+    },
+  })
+}
+
 function renderHighlight(text: string) {
   return highlightText(text, keyword.value)
 }
@@ -402,6 +411,7 @@ async function loadMore() {
               v-for="topic in (insightSections?.key_themes?.length ? insightSections.key_themes : insight.related_topics)"
               :key="topic"
               round
+              @click="reviewByTopic(topic)"
             >
               {{ topic }}
             </el-tag>

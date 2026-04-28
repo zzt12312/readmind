@@ -105,6 +105,15 @@ async function useFollowupPrompt(prompt: string) {
   await handleAsk()
 }
 
+function reviewByTopic(topic: string) {
+  void router.push({
+    path: '/review',
+    query: {
+      tag: topic,
+    },
+  })
+}
+
 function jumpToNote(bookId: number, noteId: number) {
   void router.push({
     path: '/notes',
@@ -335,6 +344,7 @@ watch(
               round
               effect="plain"
               type="success"
+              @click="reviewByTopic(term)"
             >
               {{ term }}
             </el-tag>
