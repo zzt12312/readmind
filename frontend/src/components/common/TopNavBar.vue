@@ -18,7 +18,7 @@ const globalKeyword = ref('')
 let embeddingPollTimer: number | null = null
 
 const providerLabel = computed(() => {
-  return llmHealth.value?.demo_mode ? '演示站' : 'DeepSeek'
+  return llmHealth.value?.demo_mode ? '演示模式' : 'DeepSeek'
 })
 
 const embeddingLabel = computed(() => {
@@ -64,7 +64,7 @@ const llmLabel = computed(() => {
     return '模型状态未知'
   }
   if (llmHealth.value.demo_mode) {
-    return '演示站已就绪'
+    return '演示模式（已禁用 DeepSeek）'
   }
   if (!llmHealth.value.api_key_loaded) {
     return `未配置 ${providerLabel.value}`
