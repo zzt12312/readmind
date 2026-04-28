@@ -11,10 +11,11 @@ def llm_health():
     config = current_app.config
     client = create_llm_client(config)
     api_key_loaded = bool(client.api_key)
+    demo_mode = bool(current_app.config.get("DEMO_DATA_ONLY", False))
 
     payload = {
         "provider": "deepseek",
-        "demo_mode": bool(current_app.config.get("DEMO_DATA_ONLY", False)),
+        "demo_mode": demo_mode,
         "base_url": client.base_url,
         "model": client.model,
         "api_key_loaded": api_key_loaded,
@@ -26,6 +27,10 @@ def llm_health():
         "embedding_status": embedding_service.status,
         "embedding_error": embedding_service.last_error,
     }
+
+    if demo_mode:
+        payload["detail"] = "演示模式已禁用外部模型调用"
+        return jsonify(payload)
 
     if not api_key_loaded:
         payload["detail"] = "Missing LLM API key"

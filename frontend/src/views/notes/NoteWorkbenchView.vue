@@ -85,6 +85,25 @@ const insightState = computed(() => {
 })
 
 async function loadFromRoute() {
+  const hasExplicitScope =
+    Boolean(route.query.bookId) ||
+    Boolean(route.query.noteId) ||
+    Boolean(route.query.q) ||
+    Boolean(route.query.category) ||
+    Boolean(route.query.tag) ||
+    Boolean(route.query.chapter)
+
+  if (!hasExplicitScope) {
+    // 笔记工作台默认落到《南明史》，让演示站首次进入就能看到完整内容和历史类真实笔记。
+    await router.replace({
+      path: '/notes',
+      query: {
+        bookId: '3',
+      },
+    })
+    return
+  }
+
   const bookId = route.query.bookId ? Number(route.query.bookId) : undefined
   const noteId = route.query.noteId ? Number(route.query.noteId) : undefined
   const q = route.query.q ? String(route.query.q) : ''

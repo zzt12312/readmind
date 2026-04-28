@@ -1,7 +1,7 @@
 from flask import Blueprint, current_app, jsonify, request
 
 from ..services.job_repository import job_repository
-from ..services.note_insight_service import build_insight_scope_key
+from ..services.note_insight_service import build_insight_scope_key, generate_notes_insight_sync
 from ..services.task_runner import enqueue_notes_insight
 from ..services.vault_parser import build_notes_payload, vault_repository
 
@@ -43,6 +43,12 @@ def summarize_notes():
     cached = job_repository.get_note_insight(scope_key)
     if cached:
         return jsonify(cached)
+
+    if current_app.config.get("DEMO_DATA_ONLY", False):
+        # 演示模式直接返回本地结构化洞察，让页面始终可体验，不依赖异步任务和外部模型。
+        result = generate_notes_insight_sync(current_app.config, payload)
+        job_repository.save_note_insight(scope_key, result)
+        return jsonify(result)
 
     job = enqueue_notes_insight(current_app._get_current_object(), payload)
     return (

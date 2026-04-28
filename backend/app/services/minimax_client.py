@@ -17,6 +17,8 @@ class LLMClient:
     api_key: str
     base_url: str
     model: str
+    enabled: bool = True
+    disabled_reason: str = ""
 
     def chat(
         self,
@@ -83,6 +85,8 @@ class LLMClient:
         max_completion_tokens: int,
         stream: bool,
     ) -> Any:
+        if not self.enabled:
+            raise LLMClientError(self.disabled_reason or "LLM disabled")
         if not self.api_key:
             raise LLMClientError("Missing DEEPSEEK_API_KEY")
 
@@ -147,8 +151,12 @@ def extract_stream_delta(data: dict[str, Any]) -> str:
 
 
 def create_llm_client(app_config: Any) -> LLMClient:
+    demo_mode = bool(app_config.get("DEMO_DATA_ONLY", False))
     return LLMClient(
         api_key=app_config.get("DEEPSEEK_API_KEY", ""),
         base_url=app_config.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         model=app_config.get("DEEPSEEK_MODEL", "deepseek-chat"),
+        # 演示站默认禁用外部模型调用，避免公开访问时持续消耗真实 token。
+        enabled=not demo_mode,
+        disabled_reason="演示模式已禁用外部模型调用，当前回答使用预生成结果或本地回退。",
     )

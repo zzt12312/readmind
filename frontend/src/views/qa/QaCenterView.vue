@@ -70,6 +70,12 @@ const currentBookPrompts = computed(() => {
   ]
 })
 
+function applyDemoDefaults() {
+  scope.value = 'current-book'
+  scopedBookId.value = 3
+  draft.value = '《南明史》里最值得回看的 3 个观点是什么？'
+}
+
 async function handleAsk() {
   if (!draft.value.trim()) {
     ElMessage.warning('先输入一个问题吧')
@@ -194,6 +200,8 @@ onMounted(() => {
     return
   }
   qaStore.resetConversation()
+  // 演示站默认给出单本书上下文，避免用户第一次进来面对空白问答页。
+  applyDemoDefaults()
 })
 
 watch(
