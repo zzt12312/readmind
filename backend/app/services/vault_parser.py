@@ -448,6 +448,7 @@ def rank_notes_for_query(
 class VaultRepository:
     root: Path = VAULT_ROOT
     db_path: Path = DB_PATH
+    demo_data_only: bool = False
     _signature: tuple[int, int] | None = None
     _data: dict[str, Any] | None = None
 
@@ -460,6 +461,13 @@ class VaultRepository:
         self._ensure_db()
 
         cached_signature = self._read_cached_signature()
+        if not force_refresh and self.demo_data_only and self._has_cached_books():
+            # 演示环境不依赖服务器上的原始 Markdown，只从已同步的 SQLite 缓存启动。
+            data = self._load_from_db()
+            self._signature = signature
+            self._data = data
+            return data
+
         if not force_refresh and cached_signature == signature and self._has_cached_books():
             data = self._load_from_db()
             self._signature = signature
@@ -662,6 +670,8 @@ class VaultRepository:
         }
 
     def _compute_signature(self) -> tuple[int, int]:
+        if not self.root.exists():
+            return (0, 0)
         files = list(self.root.rglob("*.md"))
         latest_mtime = max((int(path.stat().st_mtime) for path in files), default=0)
         return (len(files), latest_mtime)
