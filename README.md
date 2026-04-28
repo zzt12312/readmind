@@ -91,13 +91,8 @@ readmind/
 │   ├── .env.example
 │   ├── requirements.txt
 │   └── run.py
-├── TECH_SPEC.md             # 技术方案
-├── USER_GUIDE.md            # 使用说明
 ├── DEMO_SITE_GUIDE.md       # 演示站使用说明
-├── PROJECT_PROGRESS.md      # 当前项目进展
-├── FUTURE_IMPROVEMENTS.md   # 后续优化方向
-├── INTERVIEW_GUIDE.md       # 面试表达文档
-└── ASYNC_TASKS_PLAN.md      # 异步任务设计方案
+└── docs/                    # 项目截图等公开展示资源
 ```
 
 ## 当前已完成模块
@@ -172,12 +167,9 @@ DEEPSEEK_MODEL=deepseek-chat
 
 如果你是第一次看这个仓库，建议按下面顺序了解：
 
-1. [TECH_SPEC.md](/Users/taozhang/Desktop/maybe/TECH_SPEC.md:1)
-2. [USER_GUIDE.md](/Users/taozhang/Desktop/maybe/USER_GUIDE.md:1)
-3. [DEMO_SITE_GUIDE.md](/Users/taozhang/Desktop/maybe/DEMO_SITE_GUIDE.md:1)
-4. [PROJECT_PROGRESS.md](/Users/taozhang/Desktop/maybe/PROJECT_PROGRESS.md:1)
-5. [FUTURE_IMPROVEMENTS.md](/Users/taozhang/Desktop/maybe/FUTURE_IMPROVEMENTS.md:1)
-6. [INTERVIEW_GUIDE.md](/Users/taozhang/Desktop/maybe/INTERVIEW_GUIDE.md:1)
+1. [DEMO_SITE_GUIDE.md](/Users/taozhang/Desktop/maybe/DEMO_SITE_GUIDE.md:1)
+2. 阅读本 README 中的功能说明与界面预览
+3. 直接访问演示站体验核心流程
 
 ## 当前状态
 
