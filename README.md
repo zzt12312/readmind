@@ -21,6 +21,26 @@
 - 检索与缓存：`SQLite` + 本地 embedding 缓存
 - 数据来源：本地 `Obsidian Vault` 中的微信读书 Markdown 笔记
 
+## 当前运行模式
+
+- 本地真实模式：读取你在 `.env` 中配置的 `VAULT_ROOT`，并在需要时调用 `DeepSeek`
+- 公开演示模式：`DEMO_DATA_ONLY=1`，使用预置缓存数据，不调用外部模型
+
+## 首次启动检查清单
+
+第一次运行前，建议先确认下面几项：
+
+1. `Node.js` 版本满足当前 Vite 需求，`npm run dev` 能正常启动
+2. `Python 3`、虚拟环境和 `pip install -r requirements.txt` 已完成
+3. `backend/.env` 已配置，尤其是：
+   - `VAULT_ROOT`
+   - `DEEPSEEK_API_KEY`
+   - `DEEPSEEK_BASE_URL`
+   - `DEEPSEEK_MODEL`
+4. `VAULT_ROOT` 指向你自己的 Obsidian 阅读目录，而不是作者机器上的示例路径
+5. 先启动后端，再启动前端；如果 `5173` 被占用，请以前端终端输出端口为准
+6. 如果你只是想先体验界面，可以将 `DEMO_DATA_ONLY=1` 写入 `.env`，使用演示数据模式启动
+
 ## 项目亮点
 
 - 不是 AI 套壳 demo，而是围绕真实阅读场景构建的完整产品闭环
@@ -120,6 +140,7 @@ npm run dev
 默认地址：
 
 - `http://127.0.0.1:5173`
+- 如果 `5173` 被占用，Vite 会自动切到 `5174` 或下一个可用端口
 
 ### 2. 启动后端
 
@@ -145,7 +166,16 @@ SECRET_KEY=readmind-dev-secret
 DEEPSEEK_API_KEY=replace_with_your_deepseek_key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
+VAULT_ROOT=/path/to/your/Obsidian/Vault/书籍阅读
+DEMO_DATA_ONLY=0
 ```
+
+## 隐私与数据边界
+
+- 本地真实模式下，系统会读取 `VAULT_ROOT` 指向的 Markdown 笔记目录
+- 书库、笔记、图谱、复习等基础能力主要依赖本地缓存数据库
+- 当你主动触发摘要、AI 洞察或智能问答时，系统只会将当前命中的摘录片段发送给 `DeepSeek`
+- 如果你不希望任何内容离开本机，可以启用 `DEMO_DATA_ONLY=1` 或关闭模型调用链路
 
 ## 主要接口
 

@@ -4,12 +4,14 @@ import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import AppCard from '@/components/base/AppCard.vue'
+import { useAppStore } from '@/stores/app'
 import { useBooksStore } from '@/stores/books'
 import { useQaStore } from '@/stores/qa'
 import { highlightText } from '@/utils/text'
 
 const route = useRoute()
 const router = useRouter()
+const appStore = useAppStore()
 const booksStore = useBooksStore()
 const qaStore = useQaStore()
 const { messages, loading, sessions, currentSession, stopped, status, generationMode, retrievalMode, fallbackReason, errorMessage } = storeToRefs(qaStore)
@@ -39,6 +41,21 @@ const latestAssistantMessage = computed(() => {
 
 const latestReferences = computed(() => latestAssistantMessage.value?.references ?? [])
 const queryRewrite = computed(() => qaStore.queryRewrite)
+const evidence = computed(() => qaStore.evidence)
+const conversationMeta = computed(() => [
+  {
+    label: '当前模式',
+    value: scope.value === 'current-book' ? '单本书追问' : '全库问答',
+  },
+  {
+    label: scope.value === 'current-book' ? '当前书籍' : '引用数量',
+    value: scope.value === 'current-book' ? (currentScopedBook.value?.title ?? '未选择') : `${latestReferences.value.length} 条`,
+  },
+  {
+    label: '会话状态',
+    value: currentSession.value ? '已恢复历史对话' : '当前新对话',
+  },
+])
 const statusTone = computed(() => {
   if (status.value.phase === 'failed') return 'danger'
   if (status.value.phase === 'fallback') return 'warning'
@@ -75,6 +92,22 @@ function applyDemoDefaults() {
   scope.value = 'current-book'
   scopedBookId.value = 3
   draft.value = '《南明史》里最值得回看的 3 个观点是什么？'
+}
+
+function applyPersonalDefaults() {
+  const sorted = [...booksStore.items].sort((left, right) =>
+    (right.last_read_date || right.reading_date || '').localeCompare(left.last_read_date || left.reading_date || ''),
+  )
+  const latestBook = sorted[0]
+  if (!latestBook) {
+    scope.value = 'all-books'
+    draft.value = '帮我总结最近三本书共同观点'
+    return
+  }
+
+  scope.value = 'current-book'
+  scopedBookId.value = latestBook.id
+  draft.value = `《${latestBook.title}》里最值得回看的 3 个观点是什么？`
 }
 
 async function handleAsk() {
@@ -199,19 +232,27 @@ async function scrollConversationToBottom() {
 }
 
 onMounted(() => {
-  if (booksStore.items.length === 0) {
-    void booksStore.load()
-  }
-  qaStore.hydrateSessions()
-  syncPreset()
-  if (route.query.preset || route.query.bookId) return
-  if (qaStore.sessions.length > 0) {
-    restoreSession(qaStore.sessions[0].id)
-    return
-  }
-  qaStore.resetConversation()
-  // 演示站默认给出单本书上下文，避免用户第一次进来面对空白问答页。
-  applyDemoDefaults()
+  void (async () => {
+    if (booksStore.items.length === 0) {
+      await booksStore.load()
+    }
+    if (!appStore.llmHealth) {
+      await appStore.loadLlmHealth()
+    }
+    qaStore.hydrateSessions()
+    syncPreset()
+    if (route.query.preset || route.query.bookId) return
+    if (qaStore.sessions.length > 0) {
+      restoreSession(qaStore.sessions[0].id)
+      return
+    }
+    qaStore.resetConversation()
+    if (appStore.llmHealth?.demo_mode) {
+      applyDemoDefaults()
+      return
+    }
+    applyPersonalDefaults()
+  })()
 })
 
 watch(
@@ -310,17 +351,6 @@ watch(
           </div>
         </div>
 
-        <div class="qa-view__meta-row">
-          <div class="qa-view__meta-card">
-            <strong>当前模式</strong>
-            <span>{{ scope === 'current-book' ? '单本书追问' : '全库问答' }}</span>
-          </div>
-          <div class="qa-view__meta-card">
-            <strong>{{ scope === 'current-book' ? '当前书籍' : '引用数量' }}</strong>
-            <span>{{ scope === 'current-book' ? (currentScopedBook?.title ?? '未选择') : `${latestAssistantMessage?.references?.length ?? 0} 条` }}</span>
-          </div>
-        </div>
-
         <div class="qa-view__status-panel" :class="`is-${statusTone}`">
           <div>
             <strong>{{ status.label }}</strong>
@@ -332,6 +362,11 @@ watch(
               {{ generationMode === 'fallback' ? '本地回退' : '模型生成' }}
             </el-tag>
           </div>
+        </div>
+
+        <div v-if="evidence" class="qa-view__evidence-tip" :class="{ 'is-warning': !evidence.sufficient }">
+          <strong>证据充足度</strong>
+          <p>{{ evidence.message }}</p>
         </div>
 
         <div v-if="queryRewrite" class="qa-view__rewrite-tip">
@@ -369,7 +404,9 @@ watch(
                 message.role === 'assistant' && !message.content && loading ? 'is-thinking' : '',
               ]"
             >
-              <p>{{ message.content || status.detail || '正在结合你的读书笔记整理答案...' }}</p>
+              <div class="qa-view__bubble-content">
+                <p>{{ message.content || status.detail || '正在结合你的读书笔记整理答案...' }}</p>
+              </div>
               <div v-if="message.role === 'assistant' && message.references?.length" class="qa-view__bubble-references">
                 <article
                   v-for="reference in message.references"
@@ -389,8 +426,13 @@ watch(
         </div>
 
         <div v-if="latestAssistantMessage" class="qa-view__followups">
-          <div class="qa-view__answer-actions">
-            <strong>回答反馈</strong>
+          <div class="qa-view__answer-toolbar">
+            <div class="qa-view__answer-meta">
+              <div v-for="item in conversationMeta" :key="item.label" class="qa-view__meta-pill">
+                <strong>{{ item.label }}</strong>
+                <span>{{ item.value }}</span>
+              </div>
+            </div>
             <div class="qa-view__feedback-actions">
               <el-button
                 round
@@ -409,7 +451,7 @@ watch(
               <el-button round :disabled="loading" @click="qaStore.regenerateLastAnswer">重新生成这一轮</el-button>
             </div>
           </div>
-          <strong>继续追问</strong>
+          <strong class="qa-view__followup-title">继续追问</strong>
           <div class="qa-view__followup-list">
             <el-button v-for="prompt in followupPrompts" :key="prompt" round @click="useFollowupPrompt(prompt)">
               {{ prompt }}
@@ -433,14 +475,23 @@ watch(
       </AppCard>
 
       <AppCard class="qa-view__side">
-        <h3>引用来源</h3>
+        <div class="qa-view__side-header">
+          <div>
+            <h3>引用来源</h3>
+            <p>回答中最核心的证据片段会集中展示在这里。</p>
+          </div>
+          <el-tag round effect="plain">{{ latestReferences.length }} 条</el-tag>
+        </div>
         <div class="qa-view__reference-list">
           <article
             v-for="reference in latestReferences"
             :key="reference.book + reference.chapter + reference.note_id"
             class="qa-view__reference-card"
           >
-            <strong>{{ reference.book }} · {{ reference.chapter }}</strong>
+            <div class="qa-view__reference-head">
+              <strong>{{ reference.book }}</strong>
+              <span>{{ reference.chapter }}</span>
+            </div>
             <p v-html="renderReferenceHighlight(reference.excerpt)" />
             <el-button text @click="jumpToNote(reference.book_id, reference.note_id)">跳转原笔记</el-button>
           </article>
@@ -455,13 +506,16 @@ watch(
   display: grid;
   grid-template-columns: 280px minmax(0, 1.4fr) 360px;
   gap: 18px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .qa-view__history,
 .qa-view__main,
 .qa-view__side {
   min-height: 720px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .qa-view__history-header {
@@ -476,6 +530,10 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .qa-view__history-item {
@@ -532,13 +590,6 @@ watch(
   margin-bottom: 22px;
 }
 
-.qa-view__meta-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
 .qa-view__book-picker {
   margin-bottom: 18px;
   display: flex;
@@ -560,19 +611,6 @@ watch(
 
 .qa-view__book-option small {
   color: var(--text-tertiary);
-}
-
-.qa-view__meta-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px;
-  border-radius: 14px;
-  background: rgba(47, 93, 80, 0.06);
-}
-
-.qa-view__meta-card span {
-  color: var(--text-secondary);
 }
 
 .qa-view__status-panel {
@@ -628,6 +666,30 @@ watch(
   background: rgba(47, 93, 80, 0.05);
 }
 
+.qa-view__evidence-tip {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(47, 93, 80, 0.06);
+  border: 1px solid rgba(47, 93, 80, 0.08);
+}
+
+.qa-view__evidence-tip.is-warning {
+  background: rgba(192, 139, 92, 0.08);
+  border-color: rgba(192, 139, 92, 0.2);
+}
+
+.qa-view__evidence-tip strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.qa-view__evidence-tip p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
 .qa-view__rewrite-tip strong {
   display: block;
   margin-bottom: 6px;
@@ -654,7 +716,8 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: 640px;
+  flex: 1;
+  min-height: 280px;
   padding-right: 6px;
   overflow-y: auto;
   scroll-behavior: smooth;
@@ -678,6 +741,12 @@ watch(
   line-height: 1.75;
 }
 
+.qa-view__bubble-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .qa-view__bubble.is-user {
   margin-left: auto;
   background: var(--brand-primary);
@@ -698,6 +767,11 @@ watch(
   margin: 0;
 }
 
+.qa-view__bubble p {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .qa-view__bubble-references {
   margin-top: 14px;
   display: flex;
@@ -709,10 +783,15 @@ watch(
   padding: 12px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(47, 93, 80, 0.08);
 }
 
 .qa-view__inline-reference p {
   margin: 8px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .qa-view__bubble ol {
@@ -743,21 +822,55 @@ watch(
   gap: 10px;
 }
 
-.qa-view__answer-actions {
+.qa-view__answer-toolbar {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   padding: 12px 14px;
   border-radius: 14px;
   background: rgba(47, 93, 80, 0.06);
 }
 
+.qa-view__answer-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1 1 320px;
+}
+
+.qa-view__meta-pill {
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(47, 93, 80, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.qa-view__meta-pill strong {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+}
+
+.qa-view__meta-pill span {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 .qa-view__feedback-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+}
+
+.qa-view__followup-title {
+  display: block;
 }
 
 .qa-view__followup-list {
@@ -776,19 +889,57 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.qa-view__side-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.qa-view__side-header h3 {
+  margin: 0 0 4px;
+}
+
+.qa-view__side-header p {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 0.84rem;
+  line-height: 1.6;
 }
 
 .qa-view__reference-card {
-  padding: 16px;
+  padding: 14px;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   background: rgba(251, 248, 242, 0.7);
 }
 
+.qa-view__reference-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.qa-view__reference-head span {
+  color: var(--text-tertiary);
+  font-size: 0.84rem;
+}
+
 .qa-view__reference-card p {
-  margin: 10px 0;
+  margin: 8px 0 10px;
   color: var(--text-secondary);
   line-height: 1.75;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 :deep(mark) {
@@ -806,6 +957,7 @@ watch(
   .qa-view__main,
   .qa-view__side {
     min-height: auto;
+    height: auto;
   }
 }
 

@@ -1,4 +1,5 @@
 from itertools import count
+from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
 
@@ -27,6 +28,57 @@ JOBS = [
 ]
 
 
+def _scan_vault_health() -> dict:
+    vault_root = Path(current_app.config.get("VAULT_ROOT", "")).expanduser()
+    if current_app.config.get("DEMO_DATA_ONLY", False):
+        return {
+            "vault_root": str(vault_root),
+            "vault_status": "ready",
+            "vault_message": "演示模式使用预置缓存数据，不会扫描你的本地阅读目录。",
+            "markdown_count": 0,
+        }
+
+    if not vault_root.exists():
+        return {
+            "vault_root": str(vault_root),
+            "vault_status": "missing",
+            "vault_message": "当前路径不存在，请检查 .env 中的 VAULT_ROOT。",
+            "markdown_count": 0,
+        }
+
+    if not vault_root.is_dir():
+        return {
+            "vault_root": str(vault_root),
+            "vault_status": "invalid",
+            "vault_message": "当前路径不是文件夹，请确认 VAULT_ROOT 指向 Obsidian 阅读目录。",
+            "markdown_count": 0,
+        }
+
+    markdown_count = sum(1 for _ in vault_root.rglob("*.md"))
+    if markdown_count == 0:
+        return {
+            "vault_root": str(vault_root),
+            "vault_status": "empty",
+            "vault_message": "目录存在，但暂未发现 Markdown 笔记文件。",
+            "markdown_count": 0,
+        }
+
+    return {
+        "vault_root": str(vault_root),
+        "vault_status": "ready",
+        "vault_message": f"当前目录可用，已发现 {markdown_count} 个 Markdown 文件。",
+        "markdown_count": markdown_count,
+    }
+
+
+def _humanize_job_error(error_message: str) -> str:
+    if not error_message:
+        return "同步失败"
+    if "directory_count" in error_message:
+        return "同步统计字段缺失，请重新同步或清理缓存后重试。"
+    return error_message
+
+
 def serialize_import_job(item: dict) -> dict:
     return {
         "id": item["id"],
@@ -43,7 +95,7 @@ def serialize_async_import_job(job: dict) -> dict:
     if job["status"] == "success" and result:
         result_text = f"{result.get('book_count', 0)} 本 / {result.get('note_count', 0)} 条"
     elif job["status"] == "failed":
-        result_text = job.get("error_message") or "同步失败"
+        result_text = _humanize_job_error(job.get("error_message") or "")
 
     return {
         "id": job["id"],
@@ -51,11 +103,15 @@ def serialize_async_import_job(job: dict) -> dict:
         "status": "processing" if job["status"] in {"queued", "processing"} else ("failed" if job["status"] == "failed" else "success"),
         "progress": job.get("progress", 0),
         "result": result_text,
+        "source": "sync-local",
+        "created_at": job.get("created_at", ""),
+        "finished_at": job.get("finished_at", ""),
     }
 
 
 def build_import_meta() -> dict:
     demo_mode = bool(current_app.config.get("DEMO_DATA_ONLY", False))
+    vault_health = _scan_vault_health()
     return {
         "demo_mode": demo_mode,
         "source_label": "演示数据集（已预置真实阅读缓存）" if demo_mode else "本地 Obsidian 书籍阅读目录",
@@ -64,6 +120,7 @@ def build_import_meta() -> dict:
             if demo_mode
             else "系统会重新扫描本地 Obsidian 阅读目录，并更新书库缓存。"
         ),
+        **vault_health,
     }
 
 
@@ -82,10 +139,11 @@ def jobs():
                 "status": "success",
                 "progress": 100,
                 "result": f"{data['stats']['book_count']} 本 / {data['stats']['note_count']} 条",
+                "source": "demo-cache",
+                "created_at": "",
+                "finished_at": "",
             }
         )
-    else:
-        items.extend(serialize_import_job(job) for job in JOBS)
 
     return jsonify({"items": items, "meta": build_import_meta()})
 

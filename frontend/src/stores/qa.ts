@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { streamQuestion } from '@/api/modules/qa'
-import type { QaAskPayload, QaMessage, QaReference, QaSession, QaStatusPayload, QueryRewriteSummary } from '@/types/qa'
+import type { QaAskPayload, QaEvidenceSummary, QaMessage, QaReference, QaSession, QaStatusPayload, QueryRewriteSummary } from '@/types/qa'
 
 const QA_HISTORY_KEY = 'readmind.qa.sessions'
 
@@ -82,6 +82,7 @@ export const useQaStore = defineStore('qa', {
     fallbackReason: '',
     errorMessage: '',
     queryRewrite: null as QueryRewriteSummary | null,
+    evidence: null as QaEvidenceSummary | null,
   }),
   getters: {
     currentSession(state) {
@@ -177,6 +178,7 @@ export const useQaStore = defineStore('qa', {
       this.errorMessage = ''
       this.fallbackReason = ''
       this.queryRewrite = null
+      this.evidence = null
       this.generationMode = 'llm'
       this.status = {
         phase: lastAssistant?.content ? 'success' : 'idle',
@@ -204,6 +206,7 @@ export const useQaStore = defineStore('qa', {
       this.errorMessage = ''
       this.fallbackReason = ''
       this.queryRewrite = null
+      this.evidence = null
       this.generationMode = 'llm'
       this.status = {
         phase: 'retrieving',
@@ -235,6 +238,7 @@ export const useQaStore = defineStore('qa', {
               this.bookId = payload.book_id ?? null
               this.retrievalMode = data.retrieval_mode ?? 'hybrid'
               this.queryRewrite = data.query_rewrite ?? null
+              this.evidence = data.evidence ?? null
             },
             onStatus: (data) => {
               this.status = data
@@ -254,6 +258,7 @@ export const useQaStore = defineStore('qa', {
               this.retrievalMode = data.retrieval_mode ?? this.retrievalMode
               this.fallbackReason = data.fallback_reason ?? ''
               this.queryRewrite = data.query_rewrite ?? this.queryRewrite
+              this.evidence = data.evidence ?? this.evidence
               this.status = {
                 phase: 'success',
                 label: data.generation_mode === 'fallback' ? '已生成回退回答' : '回答生成完成',
@@ -337,6 +342,7 @@ export const useQaStore = defineStore('qa', {
       this.generationMode = 'llm'
       this.retrievalMode = 'hybrid'
       this.queryRewrite = null
+      this.evidence = null
       this.status = {
         phase: 'idle',
         label: '等待提问',

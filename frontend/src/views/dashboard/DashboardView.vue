@@ -11,7 +11,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 const router = useRouter()
 const dashboardStore = useDashboardStore()
 const booksStore = useBooksStore()
-const { metrics, recentBooks, activeTopics, loading } = storeToRefs(dashboardStore)
+const { metrics, recentBooks, activeTopics, reviewSummary, loading } = storeToRefs(dashboardStore)
 const shelfRef = ref<HTMLElement | null>(null)
 const isDraggingShelf = ref(false)
 const shelfAtStart = ref(true)
@@ -69,9 +69,9 @@ function endShelfDrag() {
     <AppCard class="dashboard-view__hero">
       <div>
         <p class="dashboard-view__hero-eyebrow">Today in your reading workspace</p>
-        <h2>今天有 12 条笔记值得回看，最近 3 本书都在讨论“长期主义”。</h2>
+        <h2>今天建议先复习 {{ reviewSummary.suggested_count }} 条笔记，再逐步消化剩余 {{ reviewSummary.due_count }} 条待回看内容。</h2>
         <p>
-          你最近的阅读记录里，关于行动系统、刻意练习和深度思考的主题正在逐渐聚合成更完整的知识脉络。
+          你已经连续复习 {{ reviewSummary.streak_days }} 天，当前掌握率为 {{ reviewSummary.mastery_rate }}。先完成一小组复习，再回到书库继续整理，会更轻松。
         </p>
       </div>
       <el-button type="primary" round @click="router.push('/review')">进入复习</el-button>

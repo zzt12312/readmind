@@ -7,7 +7,7 @@ from flask import Flask
 
 from .graph_analysis_service import build_graph_scope_key, generate_topic_graph_sync
 from .job_repository import job_repository
-from .minimax_client import LLMClientError, create_llm_client
+from .llm_client import LLMClientError, create_llm_client
 from .note_insight_service import build_insight_scope_key, generate_notes_insight_sync
 from .vault_parser import build_book_context, format_book_context, vault_repository
 

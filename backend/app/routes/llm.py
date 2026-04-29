@@ -1,6 +1,6 @@
 from flask import Blueprint, current_app, jsonify
 
-from ..services.minimax_client import LLMClientError, create_llm_client
+from ..services.llm_client import LLMClientError, create_llm_client
 from ..services.vault_parser import embedding_service
 
 llm_bp = Blueprint("llm", __name__)

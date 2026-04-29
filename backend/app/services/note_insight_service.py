@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any
 
-from .minimax_client import LLMClientError, create_llm_client
+from .llm_client import LLMClientError, create_llm_client
 from .vault_parser import build_notes_payload, format_qa_context, vault_repository
 
 

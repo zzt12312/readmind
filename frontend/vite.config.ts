@@ -10,6 +10,15 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  server: {
+    proxy: {
+      // 本地开发默认把 /api 转发到 Flask，避免 npm run dev 时仍然去请求 5173 自己。
+      '/api': {
+        target: process.env.VITE_DEV_API_PROXY_TARGET ?? 'http://127.0.0.1:5000',
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     rollupOptions: {
       output: {

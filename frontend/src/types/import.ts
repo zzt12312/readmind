@@ -4,12 +4,19 @@ export interface ImportJob {
   status: 'processing' | 'success' | 'failed'
   progress: number
   result: string
+  source?: string
+  created_at?: string
+  finished_at?: string
 }
 
 export interface ImportMeta {
   demo_mode: boolean
   source_label: string
   description: string
+  vault_root?: string
+  vault_status?: 'ready' | 'missing' | 'invalid' | 'empty'
+  vault_message?: string
+  markdown_count?: number
 }
 
 export interface ImportJobListResponse {

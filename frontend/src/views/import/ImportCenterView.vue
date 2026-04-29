@@ -61,6 +61,11 @@ async function handleSyncLocal() {
           </el-button>
           <span>{{ meta.source_label }}</span>
         </div>
+        <div class="import-view__vault-status" :class="`is-${meta.vault_status || 'ready'}`">
+          <strong>当前读取目录</strong>
+          <code>{{ meta.vault_root || '未配置' }}</code>
+          <p>{{ meta.vault_message }}</p>
+        </div>
       </div>
       <el-upload drag :http-request="handleUpload" :show-file-list="false" :multiple="true">
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
@@ -84,13 +89,12 @@ async function handleSyncLocal() {
         <article v-for="job in jobs" :key="job.id" class="import-view__job-item">
           <div>
             <strong>{{ job.file_name }}</strong>
-            <p>解析状态实时同步到工作台</p>
+            <p>{{ job.created_at ? `创建时间 ${job.created_at}` : '解析状态实时同步到工作台' }}</p>
           </div>
           <div class="import-view__job-meta">
             <AppStatusBadge :status="job.status" />
             <span>{{ job.progress }}%</span>
             <span>{{ job.result }}</span>
-            <el-button text>查看详情</el-button>
           </div>
         </article>
       </div>
@@ -133,6 +137,41 @@ async function handleSyncLocal() {
 .import-view__hero-actions span {
   color: var(--text-tertiary);
   font-size: 0.9rem;
+}
+
+.import-view__vault-status {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(47, 93, 80, 0.06);
+  border: 1px solid rgba(47, 93, 80, 0.08);
+}
+
+.import-view__vault-status strong,
+.import-view__vault-status code,
+.import-view__vault-status p {
+  display: block;
+}
+
+.import-view__vault-status code {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.import-view__vault-status p {
+  margin: 10px 0 0;
+  color: var(--text-tertiary);
+}
+
+.import-view__vault-status.is-missing,
+.import-view__vault-status.is-invalid,
+.import-view__vault-status.is-empty {
+  background: rgba(190, 76, 60, 0.08);
+  border-color: rgba(190, 76, 60, 0.14);
 }
 
 .import-view__table-header {

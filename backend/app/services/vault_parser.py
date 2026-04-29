@@ -1575,6 +1575,7 @@ def build_dashboard_payload(data: dict[str, Any]) -> dict[str, Any]:
         key=lambda item: item.get("last_read_date") or item.get("reading_date") or "",
         reverse=True,
     )[:5]
+    suggested_review_count = min(max(review_state["due_count"], 0), 10)
 
     return {
         "metrics": [
@@ -1582,9 +1583,9 @@ def build_dashboard_payload(data: dict[str, Any]) -> dict[str, Any]:
             {"label": "笔记数", "value": stats["note_count"], "hint": "来自微信读书高亮划线"},
             {"label": "分类数", "value": stats["category_count"], "hint": "按目录自动归类"},
             {
-                "label": "待复习",
-                "value": review_state["due_count"],
-                "hint": "基于真实复习进度和到期时间计算",
+                "label": "今日建议复习",
+                "value": suggested_review_count,
+                "hint": f"总待复习 {review_state['due_count']} 条，建议先完成这一小组",
             },
         ],
         "recent_books": [
@@ -1599,6 +1600,12 @@ def build_dashboard_payload(data: dict[str, Any]) -> dict[str, Any]:
         ],
         "active_topics": stats["top_topics"] or [book["category"] for book in books[:5]],
         "total_notes": len(notes),
+        "review_summary": {
+            "suggested_count": suggested_review_count,
+            "due_count": review_state["due_count"],
+            "streak_days": review_state["streak_days"],
+            "mastery_rate": review_state["mastery_rate"],
+        },
     }
 
 

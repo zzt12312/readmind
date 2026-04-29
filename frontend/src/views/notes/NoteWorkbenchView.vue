@@ -8,6 +8,7 @@ import { summarizeFilteredNotes } from '@/api/modules/notes-summary'
 import AppCard from '@/components/base/AppCard.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
 import AppSearchInput from '@/components/base/AppSearchInput.vue'
+import { useAppStore } from '@/stores/app'
 import { useBooksStore } from '@/stores/books'
 import { useNotesStore } from '@/stores/notes'
 import type { NoteInsightReference, NoteInsightSections, QueryRewriteSummary } from '@/types/note'
@@ -26,6 +27,7 @@ const insightJobStatus = ref<'' | 'queued' | 'processing' | 'success' | 'failed'
 const insightJobMessage = ref('')
 const route = useRoute()
 const router = useRouter()
+const appStore = useAppStore()
 const booksStore = useBooksStore()
 const notesStore = useNotesStore()
 const { items, insight, filters, pagination, loading, activeBookId, activeNoteId } = storeToRefs(notesStore)
@@ -33,6 +35,14 @@ const { items: bookItems } = storeToRefs(booksStore)
 
 const notes = computed(() => items.value)
 const queryRewrite = computed<QueryRewriteSummary | null>(() => insight.value.query_rewrite ?? null)
+const hasActiveFilters = computed(
+  () =>
+    Boolean(keyword.value.trim()) ||
+    Boolean(selectedCategory.value) ||
+    Boolean(selectedTag.value) ||
+    Boolean(selectedChapter.value) ||
+    selectedSort.value !== 'relevance',
+)
 const hasInsightContext = computed(
   () =>
     Boolean(route.query.bookId) ||
@@ -85,8 +95,21 @@ const insightState = computed(() => {
   }
 })
 
+function pickDefaultBookId() {
+  if (appStore.llmHealth?.demo_mode) {
+    return 3
+  }
+
+  const sorted = [...bookItems.value].sort((left, right) =>
+    (right.last_read_date || right.reading_date || '').localeCompare(left.last_read_date || left.reading_date || ''),
+  )
+  return sorted[0]?.id
+}
+
 async function loadFromRoute() {
+  const isAllScope = route.query.scope === 'all'
   const hasExplicitScope =
+    isAllScope ||
     Boolean(route.query.bookId) ||
     Boolean(route.query.noteId) ||
     Boolean(route.query.q) ||
@@ -95,12 +118,11 @@ async function loadFromRoute() {
     Boolean(route.query.chapter)
 
   if (!hasExplicitScope) {
-    // 笔记工作台默认落到《南明史》，让演示站首次进入就能看到完整内容和历史类真实笔记。
+    // 演示模式默认落到《南明史》，真实模式优先落到最近阅读的一本书。
+    const defaultBookId = pickDefaultBookId()
     await router.replace({
       path: '/notes',
-      query: {
-        bookId: '3',
-      },
+      query: defaultBookId ? { bookId: String(defaultBookId) } : { scope: 'all' },
     })
     return
   }
@@ -135,10 +157,15 @@ async function loadFromRoute() {
 }
 
 onMounted(() => {
-  if (bookItems.value.length === 0) {
-    void booksStore.load()
-  }
-  void loadFromRoute()
+  void (async () => {
+    if (bookItems.value.length === 0) {
+      await booksStore.load()
+    }
+    if (!appStore.llmHealth) {
+      await appStore.loadLlmHealth()
+    }
+    await loadFromRoute()
+  })()
 })
 
 watch(
@@ -155,6 +182,7 @@ const currentBook = computed(() => {
 
 function submitSearch() {
   const nextQuery: Record<string, string> = {}
+  if (route.query.scope === 'all') nextQuery.scope = 'all'
   if (route.query.bookId) nextQuery.bookId = String(route.query.bookId)
   if (route.query.noteId) nextQuery.noteId = String(route.query.noteId)
   if (keyword.value.trim()) nextQuery.q = keyword.value.trim()
@@ -171,6 +199,40 @@ function submitSearch() {
 
 function applyFilters() {
   submitSearch()
+}
+
+function resetFilters() {
+  keyword.value = ''
+  selectedCategory.value = ''
+  selectedTag.value = ''
+  selectedChapter.value = ''
+  selectedSort.value = 'relevance'
+
+  const nextQuery: Record<string, string> = {}
+  // 重置时保留当前书籍范围，这样单本书工作台可以快速回到“这本书的全部笔记”。
+  if (route.query.bookId) nextQuery.bookId = String(route.query.bookId)
+  if (route.query.scope === 'all') nextQuery.scope = 'all'
+
+  void router.push({
+    path: '/notes',
+    query: nextQuery,
+  })
+}
+
+function showAllNotes() {
+  keyword.value = ''
+  selectedCategory.value = ''
+  selectedTag.value = ''
+  selectedChapter.value = ''
+  selectedSort.value = 'relevance'
+
+  // 给一个显式 scope，避免“无查询参数时默认跳到《南明史》”这条首次引导逻辑再次触发。
+  void router.push({
+    path: '/notes',
+    query: {
+      scope: 'all',
+    },
+  })
 }
 
 function askCurrentBook() {
@@ -291,9 +353,11 @@ async function loadMore() {
 <template>
   <div class="note-workbench">
     <div class="note-workbench__toolbar">
-      <AppSearchInput v-model="keyword" @submit="submitSearch" />
+      <AppSearchInput v-model="keyword" class="note-workbench__search" @submit="submitSearch" />
       <div class="note-workbench__toolbar-actions">
         <el-button round @click="submitSearch">搜索</el-button>
+        <el-button v-if="hasActiveFilters" round @click="resetFilters">重置</el-button>
+        <el-button v-if="currentBook || route.query.scope === 'all'" round @click="showAllNotes">查看全部</el-button>
         <el-select v-model="selectedCategory" clearable placeholder="分类" style="width: 160px" @change="applyFilters">
           <el-option v-for="category in filters.categories" :key="category" :label="category" :value="category" />
         </el-select>
@@ -486,12 +550,20 @@ async function loadMore() {
 
 .note-workbench__toolbar {
   display: flex;
-  justify-content: space-between;
+  align-items: flex-start;
   gap: 16px;
+}
+
+.note-workbench__search {
+  flex: 1 1 340px;
+  min-width: 280px;
 }
 
 .note-workbench__toolbar-actions {
   display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 12px;
 }
 
@@ -726,6 +798,11 @@ async function loadMore() {
   .note-workbench__toolbar,
   .note-workbench__toolbar-actions {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .note-workbench__search {
+    min-width: 0;
   }
 }
 </style>

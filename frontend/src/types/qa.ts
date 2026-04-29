@@ -14,6 +14,13 @@ export interface QaReference {
   source_path: string
 }
 
+export interface QaEvidenceSummary {
+  reference_count: number
+  suggested_points: number
+  sufficient: boolean
+  message: string
+}
+
 export interface QaMessage {
   id: string
   role: 'user' | 'assistant'
@@ -36,6 +43,7 @@ export interface QaResponse {
   question: string
   answer: string
   references: QaReference[]
+  evidence?: QaEvidenceSummary
   generation_mode?: 'llm' | 'fallback'
   retrieval_mode?: string
   fallback_reason?: string
@@ -49,7 +57,7 @@ export interface QaStatusPayload {
 }
 
 export interface QaStreamEventHandlers {
-  onMeta?: (payload: { question: string; references: QaReference[]; retrieval_mode?: string; query_rewrite?: QueryRewriteSummary | null }) => void
+  onMeta?: (payload: { question: string; references: QaReference[]; retrieval_mode?: string; query_rewrite?: QueryRewriteSummary | null; evidence?: QaEvidenceSummary }) => void
   onStatus?: (payload: QaStatusPayload) => void
   onDelta?: (payload: { content: string }) => void
   onDone?: (payload: QaResponse) => void

@@ -2,7 +2,7 @@ import json
 
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
-from ..services.minimax_client import LLMClientError, create_llm_client
+from ..services.llm_client import LLMClientError, create_llm_client
 from ..services.vault_parser import answer_question, vault_repository
 from ..services.vault_parser import format_qa_context
 
@@ -16,6 +16,24 @@ SYSTEM_PROMPT = (
     "3. 如果证据不足，要明确说明；4. 不要输出<think>；"
     "5. 若当前检索范围限定为单本书，不要引用其他书。"
 )
+
+
+def build_evidence_summary(references: list[dict]) -> dict:
+    reference_count = len(references)
+    suggested_points = min(3, reference_count) if reference_count else 0
+    sufficient = reference_count >= 3
+    if reference_count == 0:
+        message = "当前没有命中可引用的笔记，回答只能基于回退逻辑生成。"
+    elif sufficient:
+        message = f"当前命中 {reference_count} 条引用，足以支撑一轮较完整的回答。"
+    else:
+        message = f"当前仅命中 {reference_count} 条引用，更适合回答 {suggested_points} 个重点。"
+    return {
+        "reference_count": reference_count,
+        "suggested_points": suggested_points,
+        "sufficient": sufficient,
+        "message": message,
+    }
 
 
 def build_llm_messages(history: list[dict], question: str, references: list[dict]) -> list[dict[str, str]]:
@@ -44,6 +62,7 @@ def ask():
     history = payload.get("history", [])
     data = vault_repository.load()
     fallback = answer_question(data, question, scope=scope, book_id=book_id)
+    fallback["evidence"] = build_evidence_summary(fallback["references"])
     fallback["generation_mode"] = "fallback"
     fallback["retrieval_mode"] = fallback.get("retrieval_mode") or "hybrid"
     fallback["fallback_reason"] = ""
@@ -75,6 +94,7 @@ def ask_stream():
     history = payload.get("history", [])
     data = vault_repository.load()
     fallback = answer_question(data, question, scope=scope, book_id=book_id)
+    evidence = build_evidence_summary(fallback["references"])
 
     def generate():
         retrieval_mode = fallback.get("retrieval_mode") or "hybrid"
@@ -85,6 +105,7 @@ def ask_stream():
                 "references": fallback["references"],
                 "retrieval_mode": retrieval_mode,
                 "query_rewrite": fallback.get("query_rewrite"),
+                "evidence": evidence,
             },
         )
         yield sse_event(
@@ -149,11 +170,12 @@ def ask_stream():
         yield sse_event(
             "done",
             {
-                "question": fallback["question"],
-                "answer": answer,
-                "references": fallback["references"],
-                "generation_mode": generation_mode,
-                "retrieval_mode": retrieval_mode,
+                    "question": fallback["question"],
+                    "answer": answer,
+                    "references": fallback["references"],
+                    "evidence": evidence,
+                    "generation_mode": generation_mode,
+                    "retrieval_mode": retrieval_mode,
                 "fallback_reason": fallback_reason,
                 "query_rewrite": fallback.get("query_rewrite"),
             },
