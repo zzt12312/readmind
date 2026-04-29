@@ -6,6 +6,7 @@ import AppCard from '@/components/base/AppCard.vue'
 import AppMetricCard from '@/components/base/AppMetricCard.vue'
 import BookCover from '@/components/common/BookCover.vue'
 import MascotBubble from '@/components/mascot/MascotBubble.vue'
+import { isStaticDemoMode } from '@/config/demo'
 import { buildDashboardMascotCue } from '@/constants/mascotMessages'
 import { useBooksStore } from '@/stores/books'
 import { useDashboardStore } from '@/stores/dashboard'
@@ -78,6 +79,32 @@ function openBriefAction(path: string) {
 }
 
 const mascotCue = computed(() => buildDashboardMascotCue(actionQueue.value[0]?.title))
+const demoGuideSteps = [
+  {
+    label: 'Step 01',
+    title: '先逛笔记工作台',
+    hint: '搜索“长期主义”或“制度”，看签签如何整理摘录线索。',
+    path: '/notes',
+  },
+  {
+    label: 'Step 02',
+    title: '问签签一个问题',
+    hint: '演示站会返回缓存 AI 效果，也会展示引用来源。',
+    path: '/qa',
+  },
+  {
+    label: 'Step 03',
+    title: '完成一组复习',
+    hint: '用“不会 / 模糊 / 熟练”体验即时反馈。',
+    path: '/review',
+  },
+  {
+    label: 'Step 04',
+    title: '查看数据看板',
+    hint: '阅读排行、偏好雷达、热力图和高价值矩阵都已准备好。',
+    path: '/analytics',
+  },
+]
 </script>
 
 <template>
@@ -120,6 +147,26 @@ const mascotCue = computed(() => buildDashboardMascotCue(actionQueue.value[0]?.t
             {{ action.label }}
           </button>
         </div>
+      </div>
+    </AppCard>
+
+    <AppCard v-if="isStaticDemoMode" class="dashboard-view__demo-guide">
+      <div class="dashboard-view__demo-guide-head">
+        <p class="dashboard-view__hero-eyebrow">Guided demo</p>
+        <h3>3 分钟体验路线</h3>
+        <span>当前为静态演示缓存，不会读取或上传你的真实 Obsidian 数据。</span>
+      </div>
+      <div class="dashboard-view__demo-guide-steps">
+        <button
+          v-for="step in demoGuideSteps"
+          :key="step.path"
+          type="button"
+          @click="openBriefAction(step.path)"
+        >
+          <em>{{ step.label }}</em>
+          <strong>{{ step.title }}</strong>
+          <span>{{ step.hint }}</span>
+        </button>
       </div>
     </AppCard>
 
@@ -375,6 +422,88 @@ const mascotCue = computed(() => buildDashboardMascotCue(actionQueue.value[0]?.t
   gap: 16px;
 }
 
+.dashboard-view__demo-guide {
+  padding: 22px;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(192, 139, 92, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(255, 253, 249, 0.98), rgba(239, 230, 214, 0.56));
+}
+
+.dashboard-view__demo-guide-head {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.dashboard-view__demo-guide-head h3 {
+  margin: 0 0 10px;
+  font-size: 1.45rem;
+}
+
+.dashboard-view__demo-guide-head span {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.dashboard-view__demo-guide-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboard-view__demo-guide-steps button {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid rgba(47, 93, 80, 0.12);
+  border-radius: 22px;
+  background: rgba(255, 253, 249, 0.74);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.dashboard-view__demo-guide-steps button:hover {
+  border-color: rgba(47, 93, 80, 0.26);
+  box-shadow: 0 14px 26px rgba(47, 93, 80, 0.08);
+  transform: translateY(-2px);
+}
+
+.dashboard-view__demo-guide-steps em,
+.dashboard-view__demo-guide-steps strong,
+.dashboard-view__demo-guide-steps span {
+  display: block;
+}
+
+.dashboard-view__demo-guide-steps em {
+  color: var(--brand-primary);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashboard-view__demo-guide-steps strong {
+  margin-top: 8px;
+  font-size: 1rem;
+}
+
+.dashboard-view__demo-guide-steps span {
+  margin-top: 7px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
 .dashboard-view__action-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -612,8 +741,13 @@ const mascotCue = computed(() => buildDashboardMascotCue(actionQueue.value[0]?.t
   .dashboard-view__hero,
   .dashboard-view__action-grid,
   .dashboard-view__recommend,
+  .dashboard-view__demo-guide,
   .dashboard-view__grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-view__demo-guide-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -624,6 +758,10 @@ const mascotCue = computed(() => buildDashboardMascotCue(actionQueue.value[0]?.t
   }
 
   .dashboard-view__brief-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-view__demo-guide-steps {
     grid-template-columns: 1fr;
   }
 }

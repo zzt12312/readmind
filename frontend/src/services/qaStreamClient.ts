@@ -1,4 +1,5 @@
 import { apiClient } from '@/api/client'
+import { isStaticDemoMode } from '@/config/demo'
 import type { QaAskPayload, QaStreamEventHandlers } from '@/types/qa'
 
 // The backend streams QA as Server-Sent Events. Keeping the protocol parser in
@@ -8,6 +9,17 @@ export async function streamQuestion(
   handlers: QaStreamEventHandlers,
   signal?: AbortSignal,
 ) {
+  if (isStaticDemoMode) {
+    try {
+      const { streamStaticQuestion } = await import('@/mock/staticDemo')
+      await streamStaticQuestion(payload, handlers, signal)
+    } catch (error) {
+      handlers.onError?.(error as Error)
+      throw error
+    }
+    return
+  }
+
   try {
     const response = await fetch(`${apiClient.defaults.baseURL}/qa/stream`, {
       method: 'POST',

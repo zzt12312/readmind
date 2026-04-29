@@ -143,6 +143,16 @@ VAULT_ROOT=/path/to/your/Obsidian/Vault/书籍阅读
 DEMO_DATA_ONLY=0
 ```
 
+公开演示站如果不连接后端 API，可以使用前端静态演示构建：
+
+```bash
+cd frontend
+VITE_STATIC_DEMO=1 npm run build
+npm run preview -- --host 0.0.0.0 --port 3000
+```
+
+这个模式会在浏览器内使用 `frontend/src/mock/staticDemo.ts` 的缓存数据，展示书库、笔记、签签问答、AI 洞察、知识图谱、复习中心和数据看板，不会读取真实 Vault，也不会调用外部模型。
+
 ## 目录结构
 
 ```text
