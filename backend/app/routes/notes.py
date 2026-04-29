@@ -2,8 +2,9 @@ from flask import Blueprint, current_app, jsonify, request
 
 from ..services.job_repository import job_repository
 from ..services.note_insight_service import build_insight_scope_key, generate_notes_insight_sync
+from ..services.payloads.notes import build_notes_payload
 from ..services.task_runner import enqueue_notes_insight
-from ..services.vault_parser import build_notes_payload, vault_repository
+from ..services.vault_parser import vault_repository
 
 notes_bp = Blueprint("notes", __name__)
 

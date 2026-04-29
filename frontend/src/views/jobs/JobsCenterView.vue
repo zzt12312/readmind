@@ -34,6 +34,7 @@ const filteredJobs = computed(() =>
     return true
   }),
 )
+const activeFilterCount = computed(() => [selectedStatus.value, selectedJobType.value].filter(Boolean).length)
 
 const jobTypeLabelMap: Record<string, string> = {
   book_summary: '书籍摘要',
@@ -93,23 +94,45 @@ onMounted(() => {
     <PageHeader
       title="任务中心"
       description="统一查看书籍摘要、AI 洞察、本地同步与图谱分析的后台任务状态，也可以在这里重试失败任务。"
-    >
+    />
+
+    <AppCard class="jobs-center__filter-panel">
+      <div class="jobs-center__filter-glow" aria-hidden="true" />
+      <div class="jobs-center__filter-header">
+        <div>
+          <p>Task Filters</p>
+          <h3>任务筛选</h3>
+        </div>
+        <div class="jobs-center__filter-status" :class="{ 'is-active': activeFilterCount }">
+          <span>{{ activeFilterCount ? `${activeFilterCount} 个筛选` : '全部任务' }}</span>
+          <strong>{{ filteredJobs.length }} / {{ jobs.length }}</strong>
+        </div>
+      </div>
       <div class="jobs-center__actions">
-        <el-select v-model="selectedStatus" clearable placeholder="按状态筛选" style="width: 160px">
+        <label>
+          <span>状态</span>
+          <el-select v-model="selectedStatus" clearable placeholder="全部状态">
           <el-option label="排队中" value="queued" />
           <el-option label="处理中" value="processing" />
           <el-option label="已完成" value="success" />
           <el-option label="失败" value="failed" />
         </el-select>
-        <el-select v-model="selectedJobType" clearable placeholder="按类型筛选" style="width: 180px">
+        </label>
+        <label>
+          <span>类型</span>
+          <el-select v-model="selectedJobType" clearable placeholder="全部类型">
           <el-option label="书籍摘要" value="book_summary" />
           <el-option label="笔记洞察" value="notes_insight" />
           <el-option label="本地同步" value="vault_sync" />
           <el-option label="图谱分析" value="graph_analysis" />
         </el-select>
-        <el-button round @click="loadJobs">刷新任务</el-button>
+        </label>
+        <div class="jobs-center__filter-buttons">
+          <el-button round @click="selectedStatus = ''; selectedJobType = ''">重置</el-button>
+          <el-button type="primary" round @click="loadJobs">刷新任务</el-button>
+        </div>
       </div>
-    </PageHeader>
+    </AppCard>
 
     <section class="jobs-center__metrics">
       <AppMetricCard
@@ -169,11 +192,165 @@ onMounted(() => {
   gap: 20px;
 }
 
-.jobs-center__actions {
+.jobs-center__filter-panel {
+  position: relative;
+  overflow: hidden;
+  padding: 22px;
+  border-color: rgba(216, 207, 191, 0.72);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(47, 93, 80, 0.14), transparent 28%),
+    radial-gradient(circle at 92% 18%, rgba(197, 139, 92, 0.15), transparent 30%),
+    linear-gradient(135deg, rgba(255, 253, 249, 0.98), rgba(248, 242, 232, 0.92));
+}
+
+.jobs-center__filter-panel::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border: 1px solid rgba(255, 253, 249, 0.74);
+  border-radius: 24px;
+  pointer-events: none;
+}
+
+.jobs-center__filter-glow {
+  position: absolute;
+  right: -54px;
+  top: -78px;
+  width: 190px;
+  height: 190px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(197, 139, 92, 0.18), transparent 68%);
+  pointer-events: none;
+}
+
+.jobs-center__filter-header {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 14px;
   display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.jobs-center__filter-header p {
+  margin: 0 0 4px;
+  color: var(--brand-accent);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.jobs-center__filter-header h3 {
+  margin: 0;
+  color: var(--brand-primary);
+}
+
+.jobs-center__filter-status {
+  min-width: 122px;
+  padding: 9px 12px;
+  border: 1px solid rgba(216, 207, 191, 0.62);
+  border-radius: 18px;
+  background: rgba(255, 253, 249, 0.72);
+  box-shadow: 0 10px 24px rgba(47, 93, 80, 0.08);
+  text-align: right;
+}
+
+.jobs-center__filter-status span {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.jobs-center__filter-status strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--brand-primary);
+  font-size: 0.95rem;
+}
+
+.jobs-center__filter-status.is-active {
+  border-color: rgba(47, 93, 80, 0.24);
+  background:
+    linear-gradient(135deg, rgba(47, 93, 80, 0.08), rgba(255, 253, 249, 0.86)),
+    rgba(255, 253, 249, 0.86);
+}
+
+.jobs-center__actions {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(200px, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.jobs-center__actions label {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(216, 207, 191, 0.5);
+  border-radius: 20px;
+  background: rgba(255, 253, 249, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.jobs-center__actions label > span {
+  color: var(--brand-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+}
+
+.jobs-center__actions :deep(.el-select) {
+  width: 100%;
+}
+
+.jobs-center__actions :deep(.el-select__wrapper) {
+  min-height: 42px;
+  border: 1px solid rgba(216, 207, 191, 0.66);
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.92);
+  box-shadow: none;
+}
+
+.jobs-center__actions :deep(.el-select__wrapper.is-focused) {
+  border-color: rgba(47, 93, 80, 0.34);
+  box-shadow: 0 0 0 3px rgba(47, 93, 80, 0.08);
+}
+
+.jobs-center__filter-buttons {
+  padding: 12px;
+  border: 1px solid rgba(216, 207, 191, 0.46);
+  border-radius: 20px;
+  background: rgba(255, 253, 249, 0.5);
+  display: flex;
+  gap: 10px;
   justify-content: flex-end;
+}
+
+.jobs-center__filter-buttons :deep(.el-button) {
+  min-height: 42px;
+  padding-inline: 18px;
+  font-weight: 900;
+}
+
+.jobs-center__filter-buttons :deep(.el-button--primary) {
+  border-color: transparent;
+  background:
+    linear-gradient(135deg, var(--brand-primary), #447967);
+  box-shadow: 0 12px 26px rgba(47, 93, 80, 0.18);
+}
+
+.jobs-center__filter-buttons :deep(.el-button:not(.el-button--primary)) {
+  border-color: rgba(216, 207, 191, 0.72);
+  background: rgba(255, 253, 249, 0.86);
+  color: var(--text-secondary);
 }
 
 .jobs-center__metrics {
@@ -247,7 +424,11 @@ onMounted(() => {
   }
 
   .jobs-center__actions {
-    justify-content: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .jobs-center__filter-buttons {
+    justify-content: flex-start;
   }
 }
 </style>

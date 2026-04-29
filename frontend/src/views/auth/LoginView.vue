@@ -18,7 +18,7 @@
       <p>继续整理你的阅读知识库</p>
       <el-form label-position="top">
         <el-form-item label="邮箱">
-          <el-input placeholder="tao@example.com" />
+          <el-input placeholder="reader@example.com" />
         </el-form-item>
         <el-form-item label="密码">
           <el-input type="password" placeholder="请输入密码" show-password />

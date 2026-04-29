@@ -3,22 +3,27 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchJobDetail } from '@/api/modules/jobs'
 import { summarizeFilteredNotes } from '@/api/modules/notes-summary'
 import AppCard from '@/components/base/AppCard.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
-import AppSearchInput from '@/components/base/AppSearchInput.vue'
+import NoteCard from '@/components/notes/NoteCard.vue'
+import NoteInsightPanel from '@/components/notes/NoteInsightPanel.vue'
+import NoteToolbar from '@/components/notes/NoteToolbar.vue'
+import QueryRewriteTip from '@/components/notes/QueryRewriteTip.vue'
+import MascotBubble from '@/components/mascot/MascotBubble.vue'
+import { buildEmptyNotesMascotCue } from '@/constants/mascotMessages'
+import { useJobPolling } from '@/composables/useJobPolling'
 import { useAppStore } from '@/stores/app'
 import { useBooksStore } from '@/stores/books'
 import { useNotesStore } from '@/stores/notes'
 import type { NoteInsightReference, NoteInsightSections, QueryRewriteSummary } from '@/types/note'
-import { highlightText } from '@/utils/text'
 
 const keyword = ref('')
 const selectedCategory = ref('')
 const selectedTag = ref('')
 const selectedChapter = ref('')
 const selectedSort = ref('relevance')
+const searchScope = ref<'current-book' | 'all-books'>('current-book')
 const refreshingInsight = ref(false)
 const insightSummary = ref('')
 const insightReferences = ref<NoteInsightReference[]>([])
@@ -30,11 +35,17 @@ const router = useRouter()
 const appStore = useAppStore()
 const booksStore = useBooksStore()
 const notesStore = useNotesStore()
+const { pollJob } = useJobPolling()
 const { items, insight, filters, pagination, loading, activeBookId, activeNoteId } = storeToRefs(notesStore)
 const { items: bookItems } = storeToRefs(booksStore)
 
 const notes = computed(() => items.value)
 const queryRewrite = computed<QueryRewriteSummary | null>(() => insight.value.query_rewrite ?? null)
+const emptyNotesMascotCue = computed(() => buildEmptyNotesMascotCue())
+
+// The route query is the source of truth for the workbench. Local refs mirror
+// it so form controls feel instant, then `submitSearch()` writes changes back
+// into the URL. This makes filtered note views shareable and restorable.
 const hasActiveFilters = computed(
   () =>
     Boolean(keyword.value.trim()) ||
@@ -140,6 +151,7 @@ async function loadFromRoute() {
   selectedTag.value = tag
   selectedChapter.value = chapter
   selectedSort.value = sort
+  searchScope.value = bookId && route.query.scope !== 'all' ? 'current-book' : 'all-books'
   await notesStore.load({ book_id: bookId, note_id: noteId, q, category, tag, chapter, sort, page, per_page: 30 })
   insightSummary.value = ''
   insightReferences.value = []
@@ -179,12 +191,53 @@ const currentBook = computed(() => {
   if (!activeBookId.value) return null
   return booksStore.findById(activeBookId.value)
 })
+const noteHeroTitle = computed(() => {
+  const query = keyword.value.trim()
+  if (query) {
+    const scopeText = searchScope.value === 'current-book' && currentBook.value
+      ? `《${currentBook.value.title}》`
+      : '全部书籍'
+    return `在${scopeText}中搜索「${query}」`
+  }
+  if (currentBook.value) {
+    return `正在整理《${currentBook.value.title}》`
+  }
+  if (selectedTag.value) {
+    return `正在浏览「${selectedTag.value}」主题笔记`
+  }
+  if (selectedCategory.value) {
+    return `正在浏览「${selectedCategory.value}」分类笔记`
+  }
+  return '从书摘里重新发现你的想法'
+})
+const noteHeroDescription = computed(() => {
+  const filtersText = [
+    selectedCategory.value ? `分类：${selectedCategory.value}` : '',
+    selectedTag.value ? `标签：${selectedTag.value}` : '',
+    selectedChapter.value ? `章节：${selectedChapter.value}` : '',
+  ].filter(Boolean)
+
+  if (keyword.value.trim()) {
+    return filtersText.length
+      ? `已叠加 ${filtersText.join('、')}，当前命中结果会优先展示和关键词最相关的摘录。`
+      : '当前结果会优先展示和关键词最相关的摘录，你可以继续叠加分类、标签或章节缩小范围。'
+  }
+  if (currentBook.value) {
+    return '围绕这本书筛选摘录、追问观点、生成洞察，并把值得回看的内容送进复习。'
+  }
+  if (filtersText.length) {
+    return `已按 ${filtersText.join('、')} 缩小范围，可以继续搜索关键词或生成 AI 洞察。`
+  }
+  return '搜索关键词、主题标签或章节，把分散在 Obsidian 里的微信读书划线整理成可复用的知识线索。'
+})
 
 function submitSearch() {
   const nextQuery: Record<string, string> = {}
-  if (route.query.scope === 'all') nextQuery.scope = 'all'
-  if (route.query.bookId) nextQuery.bookId = String(route.query.bookId)
-  if (route.query.noteId) nextQuery.noteId = String(route.query.noteId)
+  if (searchScope.value === 'all-books') {
+    nextQuery.scope = 'all'
+  } else if (activeBookId.value) {
+    nextQuery.bookId = String(activeBookId.value)
+  }
   if (keyword.value.trim()) nextQuery.q = keyword.value.trim()
   if (selectedCategory.value) nextQuery.category = selectedCategory.value
   if (selectedTag.value) nextQuery.tag = selectedTag.value
@@ -197,10 +250,6 @@ function submitSearch() {
   })
 }
 
-function applyFilters() {
-  submitSearch()
-}
-
 function resetFilters() {
   keyword.value = ''
   selectedCategory.value = ''
@@ -209,9 +258,11 @@ function resetFilters() {
   selectedSort.value = 'relevance'
 
   const nextQuery: Record<string, string> = {}
-  // 重置时保留当前书籍范围，这样单本书工作台可以快速回到“这本书的全部笔记”。
-  if (route.query.bookId) nextQuery.bookId = String(route.query.bookId)
-  if (route.query.scope === 'all') nextQuery.scope = 'all'
+  if (searchScope.value === 'current-book' && activeBookId.value) {
+    nextQuery.bookId = String(activeBookId.value)
+  } else {
+    nextQuery.scope = 'all'
+  }
 
   void router.push({
     path: '/notes',
@@ -225,6 +276,7 @@ function showAllNotes() {
   selectedTag.value = ''
   selectedChapter.value = ''
   selectedSort.value = 'relevance'
+  searchScope.value = 'all-books'
 
   // 给一个显式 scope，避免“无查询参数时默认跳到《南明史》”这条首次引导逻辑再次触发。
   void router.push({
@@ -254,10 +306,6 @@ function reviewByTopic(topic: string) {
       tag: topic,
     },
   })
-}
-
-function renderHighlight(text: string) {
-  return highlightText(text, keyword.value)
 }
 
 function jumpToInsightReference(reference: NoteInsightReference) {
@@ -298,6 +346,8 @@ async function refreshInsight() {
       sort: selectedSort.value,
     })
     if (data.summary) {
+      // In demo/fallback mode the backend can return a summary immediately.
+      // Otherwise it returns a job id and the polling branch below fills state.
       insightSummary.value = data.summary
       insightReferences.value = data.references
       insightSections.value = data.sections
@@ -321,222 +371,113 @@ async function refreshInsight() {
 }
 
 async function pollInsightJob(jobId: string) {
-  // AI 洞察改成异步后，右侧面板不再被生成请求卡住；这里只轮询后台任务并在完成后回填结果。
-  for (let index = 0; index < 40; index += 1) {
-    const job = await fetchJobDetail(jobId)
-    insightJobStatus.value = job.status
-    insightJobMessage.value = job.message || ''
-
-    if (job.status === 'success') {
+  await pollJob(jobId, {
+    maxAttempts: 40,
+    intervalMs: 1500,
+    onProgress: (job) => {
+      insightJobStatus.value = job.status
+      insightJobMessage.value = job.message || ''
+    },
+    onSuccess: (job) => {
       insightSummary.value = job.result?.summary || ''
       insightReferences.value = ((job.result as { references?: NoteInsightReference[] } | null)?.references) || []
       insightSections.value = ((job.result as { sections?: NoteInsightSections } | null)?.sections) || null
       ElMessage.success('已基于当前筛选条件重新总结')
-      return
-    }
-
-    if (job.status === 'failed') {
-      throw new Error(job.error_message || 'AI 洞察生成失败')
-    }
-
-    await new Promise((resolve) => window.setTimeout(resolve, 1500))
-  }
-
-  insightJobMessage.value = '洞察仍在生成中，请稍后再看'
+    },
+    onFailed: (job) => {
+      insightJobMessage.value = job.error_message || 'AI 洞察生成失败'
+    },
+    onTimeout: () => {
+      insightJobMessage.value = '洞察仍在生成中，请稍后再看'
+    },
+  })
 }
 
 async function loadMore() {
   await notesStore.loadMore()
 }
+
 </script>
 
 <template>
   <div class="note-workbench">
-    <div class="note-workbench__toolbar">
-      <AppSearchInput v-model="keyword" class="note-workbench__search" @submit="submitSearch" />
-      <div class="note-workbench__toolbar-actions">
-        <el-button round @click="submitSearch">搜索</el-button>
-        <el-button v-if="hasActiveFilters" round @click="resetFilters">重置</el-button>
-        <el-button v-if="currentBook || route.query.scope === 'all'" round @click="showAllNotes">查看全部</el-button>
-        <el-select v-model="selectedCategory" clearable placeholder="分类" style="width: 160px" @change="applyFilters">
-          <el-option v-for="category in filters.categories" :key="category" :label="category" :value="category" />
-        </el-select>
-        <el-select v-model="selectedTag" clearable placeholder="标签" style="width: 180px" @change="applyFilters">
-          <el-option v-for="tag in filters.tags" :key="tag" :label="tag" :value="tag" />
-        </el-select>
-        <el-select v-model="selectedChapter" clearable placeholder="章节" style="width: 180px" @change="applyFilters">
-          <el-option v-for="chapter in filters.chapters" :key="chapter" :label="chapter" :value="chapter" />
-        </el-select>
-        <el-select v-model="selectedSort" placeholder="排序" style="width: 160px" @change="applyFilters">
-          <el-option label="默认排序" value="relevance" />
-          <el-option label="时间从新到旧" value="time_desc" />
-          <el-option label="时间从旧到新" value="time_asc" />
-          <el-option label="内容较长优先" value="length_desc" />
-        </el-select>
-        <el-button round @click="refreshInsight">AI 再整理</el-button>
+    <AppCard class="note-workbench__hero">
+      <div>
+        <p class="note-workbench__eyebrow">Reading Notes Studio</p>
+        <h2>{{ noteHeroTitle }}</h2>
+        <p>{{ noteHeroDescription }}</p>
       </div>
-    </div>
+      <div class="note-workbench__hero-stats">
+        <span>当前结果</span>
+        <strong>{{ pagination.total }}</strong>
+        <em>条笔记</em>
+      </div>
+    </AppCard>
+
+    <NoteToolbar
+      v-model:keyword="keyword"
+      v-model:search-scope="searchScope"
+      v-model:category="selectedCategory"
+      v-model:tag="selectedTag"
+      v-model:chapter="selectedChapter"
+      v-model:sort="selectedSort"
+      :filters="filters"
+      :has-active-filters="hasActiveFilters"
+      :can-show-all="Boolean(currentBook || route.query.scope === 'all')"
+      :current-book-title="currentBook?.title"
+      @submit="submitSearch"
+      @reset="resetFilters"
+      @show-all="showAllNotes"
+      @refresh-insight="refreshInsight"
+      @ask-current-book="askCurrentBook"
+    />
 
     <section class="note-workbench__grid">
-      <AppCard class="note-workbench__left">
-        <h3>筛选</h3>
-        <div class="note-workbench__filters">
-          <div>
-            <strong>书籍</strong>
-            <p>{{ currentBook ? currentBook.title : activeBookId ? `已定位到书籍 #${activeBookId}` : '全部书籍' }}</p>
-            <el-button v-if="currentBook" text @click="askCurrentBook">问这本书</el-button>
-          </div>
-          <div>
-            <strong>标签</strong>
-            <div class="note-workbench__tag-list">
-              <el-tag
-                v-for="tag in filters.tags.slice(0, 8)"
-                :key="tag"
-                round
-                effect="plain"
-                :type="selectedTag === tag ? 'success' : 'info'"
-                @click="selectedTag = selectedTag === tag ? '' : tag; applyFilters()"
-              >
-                {{ tag }}
-              </el-tag>
-            </div>
-          </div>
-        </div>
-      </AppCard>
-
       <div v-loading="loading" class="note-workbench__center">
-        <p class="note-workbench__result-count">当前结果 {{ pagination.total }} 条</p>
-        <section v-if="queryRewrite" class="note-workbench__rewrite-tip">
-          <strong>检索扩展</strong>
-          <p>系统识别到你在问 <span>{{ queryRewrite.applied_rules.join('、') }}</span>，所以补充检索了这些相关概念：</p>
-          <div class="note-workbench__tag-list">
-            <el-tag
-              v-for="term in queryRewrite.expansion_terms.slice(0, 6)"
-              :key="term"
-              round
-              effect="plain"
-              type="success"
-            >
-              {{ term }}
-            </el-tag>
-          </div>
-        </section>
-        <AppCard
+        <div class="note-workbench__result-bar">
+          <span>{{ currentBook ? currentBook.title : '全部书籍' }}</span>
+          <strong>{{ pagination.total }} 条笔记</strong>
+        </div>
+        <QueryRewriteTip v-if="queryRewrite" :query-rewrite="queryRewrite" />
+        <NoteCard
           v-for="note in notes"
           :key="note.id"
-          class="note-workbench__note-card"
-          :class="{ 'is-active-note': note.id === activeNoteId }"
-          :data-note-id="note.id"
-        >
-          <p class="note-workbench__chapter">{{ note.chapter }}</p>
-          <strong class="note-workbench__book-title">{{ note.book_title }}</strong>
-          <blockquote v-html="renderHighlight(note.excerpt)" />
-          <p class="note-workbench__comment" v-html="renderHighlight(note.comment)" />
-          <div class="note-workbench__tag-list">
-            <el-tag v-for="tag in note.tags" :key="tag" round effect="plain">{{ tag }}</el-tag>
-          </div>
-        </AppCard>
+          :note="note"
+          :active="note.id === activeNoteId"
+          :keyword="keyword"
+        />
 
         <AppEmpty
           v-if="!loading && notes.length === 0"
           title="没有找到匹配的笔记"
           description="试试搜索章节名、观点关键词或主题标签。"
-        />
+        >
+          <MascotBubble
+            class="note-workbench__empty-mascot"
+            :mood="emptyNotesMascotCue.mood"
+            :message="emptyNotesMascotCue.message"
+            compact
+          />
+        </AppEmpty>
         <div v-else-if="pagination.has_more" class="note-workbench__load-more">
           <el-button round :loading="loading" @click="loadMore">加载更多</el-button>
         </div>
       </div>
 
-      <AppCard class="note-workbench__right">
-        <div class="note-workbench__insight-header">
-          <h3>AI 洞察</h3>
-          <el-button text :loading="refreshingInsight" @click="refreshInsight">
-            {{ hasGeneratedInsight ? '重新总结' : '生成总结' }}
-          </el-button>
-        </div>
-        <section class="note-workbench__insight-state" :class="`is-${insightState.tone}`">
-          <strong>{{ insightState.label }}</strong>
-          <p>{{ insightState.detail }}</p>
-        </section>
-        <div class="note-workbench__insight-scroll">
-        <template v-if="hasGeneratedInsight">
-        <section class="note-workbench__insight">
-          <strong>核心结论</strong>
-          <p>{{ insightSummary }}</p>
-        </section>
-        <section v-if="insightSections?.reasoning" class="note-workbench__insight">
-          <strong>为什么值得关注</strong>
-          <p>{{ insightSections.reasoning }}</p>
-        </section>
-        <section class="note-workbench__insight">
-          <strong>关联主题</strong>
-          <div class="note-workbench__tag-list">
-            <el-tag
-              v-for="topic in (insightSections?.key_themes?.length ? insightSections.key_themes : insight.related_topics)"
-              :key="topic"
-              round
-              @click="reviewByTopic(topic)"
-            >
-              {{ topic }}
-            </el-tag>
-          </div>
-        </section>
-        <section v-if="insightSections?.review_questions?.length" class="note-workbench__insight">
-          <strong>值得复习的问题</strong>
-          <ul class="note-workbench__insight-list">
-            <li v-for="question in insightSections.review_questions" :key="question">{{ question }}</li>
-          </ul>
-        </section>
-        <section v-if="insightSections?.action_suggestions?.length" class="note-workbench__insight">
-          <strong>可执行建议</strong>
-          <ul class="note-workbench__insight-list">
-            <li v-for="suggestion in insightSections.action_suggestions" :key="suggestion">{{ suggestion }}</li>
-          </ul>
-        </section>
-        <section v-if="queryRewrite" class="note-workbench__insight">
-          <strong>本次检索如何扩展问题</strong>
-          <p>为了更稳地召回相关笔记，系统额外补充了以下概念词。</p>
-          <div class="note-workbench__tag-list">
-            <el-tag v-for="term in queryRewrite.expansion_terms.slice(0, 8)" :key="term" round effect="plain">
-              {{ term }}
-            </el-tag>
-          </div>
-        </section>
-        <section v-if="insightReferences.length" class="note-workbench__insight">
-          <strong>引用依据</strong>
-          <div class="note-workbench__insight-references">
-            <article
-              v-for="reference in insightReferences"
-              :key="reference.book + reference.chapter + reference.excerpt"
-              class="note-workbench__insight-reference"
-              @click="jumpToInsightReference(reference)"
-            >
-              <p class="note-workbench__insight-reference-title">{{ reference.book }} · {{ reference.chapter }}</p>
-              <blockquote>{{ reference.excerpt }}</blockquote>
-            </article>
-          </div>
-        </section>
-        </template>
-        <section
-          v-else-if="insightJobStatus === 'queued' || insightJobStatus === 'processing'"
-          class="note-workbench__insight note-workbench__insight--placeholder"
-        >
-          <strong>{{ insightState.label }}</strong>
-          <p>{{ insightState.detail }}</p>
-        </section>
-        <section
-          v-else-if="insightJobStatus === 'failed'"
-          class="note-workbench__insight note-workbench__insight--placeholder note-workbench__insight--error"
-        >
-          <strong>{{ insightState.label }}</strong>
-          <p>{{ insightState.detail }}</p>
-        </section>
-        <section v-else class="note-workbench__insight note-workbench__insight--placeholder">
-          <strong>{{ insightState.label }}</strong>
-          <p>{{ insightState.detail }}</p>
-        </section>
-        </div>
-      </AppCard>
+      <NoteInsightPanel
+        :refreshing="refreshingInsight"
+        :has-generated-insight="hasGeneratedInsight"
+        :insight-state="insightState"
+        :insight-summary="insightSummary"
+        :insight-sections="insightSections"
+        :related-topics="insight.related_topics"
+        :query-rewrite="queryRewrite"
+        :insight-references="insightReferences"
+        :insight-job-status="insightJobStatus"
+        @refresh="refreshInsight"
+        @review-by-topic="reviewByTopic"
+        @jump-to-reference="jumpToInsightReference"
+      />
     </section>
   </div>
 </template>
@@ -548,47 +489,91 @@ async function loadMore() {
   gap: 18px;
 }
 
-.note-workbench__toolbar {
+.note-workbench__hero {
+  position: relative;
+  overflow: hidden;
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-end;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 92% 16%, rgba(192, 139, 92, 0.22), transparent 30%),
+    linear-gradient(135deg, rgba(47, 93, 80, 0.12), rgba(255, 253, 249, 0.96) 58%),
+    var(--bg-card);
 }
 
-.note-workbench__search {
-  flex: 1 1 340px;
-  min-width: 280px;
+.note-workbench__hero::after {
+  content: '';
+  position: absolute;
+  right: -52px;
+  bottom: -68px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  border: 1px solid rgba(47, 93, 80, 0.1);
+  background: rgba(255, 253, 249, 0.34);
 }
 
-.note-workbench__toolbar-actions {
-  display: flex;
-  flex: 0 1 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 12px;
+.note-workbench__hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.note-workbench__eyebrow {
+  margin: 0 0 10px;
+  color: var(--brand-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.note-workbench__hero h2 {
+  max-width: 48rem;
+  margin: 0 0 10px;
+  font-size: clamp(1.5rem, 2vw, 2.1rem);
+  letter-spacing: -0.03em;
+}
+
+.note-workbench__hero p:last-child {
+  max-width: 46rem;
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.note-workbench__hero-stats {
+  min-width: 132px;
+  padding: 16px;
+  border-radius: 22px;
+  text-align: center;
+  background: rgba(255, 253, 249, 0.74);
+  border: 1px solid rgba(216, 207, 191, 0.72);
+  box-shadow: var(--shadow-sm);
+}
+
+.note-workbench__hero-stats span,
+.note-workbench__hero-stats em {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+  font-style: normal;
+}
+
+.note-workbench__hero-stats strong {
+  display: block;
+  margin: 4px 0;
+  color: var(--brand-primary);
+  font-size: 2rem;
+  line-height: 1;
 }
 
 .note-workbench__grid {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 340px;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
   align-items: start;
-}
-
-.note-workbench__left,
-.note-workbench__right {
-  position: sticky;
-  top: 106px;
-}
-
-.note-workbench__filters {
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-}
-
-.note-workbench__filters p {
-  margin: 8px 0 0;
-  color: var(--text-secondary);
 }
 
 .note-workbench__center {
@@ -603,75 +588,27 @@ async function loadMore() {
   padding: 8px 0 4px;
 }
 
-.note-workbench__result-count {
-  margin: 0;
+.note-workbench__empty-mascot {
+  max-width: 460px;
+  margin: 18px auto 0;
+  text-align: left;
+}
+
+.note-workbench__result-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border: 1px solid rgba(216, 207, 191, 0.68);
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.76);
   color: var(--text-tertiary);
   font-size: 0.9rem;
 }
 
-.note-workbench__rewrite-tip {
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(47, 93, 80, 0.12);
-  background: rgba(47, 93, 80, 0.06);
-}
-
-.note-workbench__rewrite-tip strong {
-  display: block;
-  margin-bottom: 6px;
-}
-
-.note-workbench__rewrite-tip p {
-  margin: 0 0 10px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-.note-workbench__rewrite-tip span {
+.note-workbench__result-bar strong {
   color: var(--text-primary);
-  font-weight: 600;
-}
-
-.note-workbench__note-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.note-workbench__note-card.is-active-note {
-  border-color: rgba(47, 93, 80, 0.45);
-  box-shadow: 0 0 0 2px rgba(47, 93, 80, 0.12);
-}
-
-.note-workbench__chapter {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: 0.88rem;
-}
-
-.note-workbench__book-title {
-  color: var(--brand-primary);
-}
-
-.note-workbench blockquote {
-  margin: 0;
-  padding-left: 14px;
-  border-left: 3px solid var(--brand-accent);
-  color: var(--text-primary);
-  font-size: 1rem;
-  line-height: 1.85;
-}
-
-.note-workbench__comment {
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.8;
-}
-
-:deep(mark) {
-  padding: 0 2px;
-  border-radius: 4px;
-  background: rgba(192, 139, 92, 0.22);
 }
 
 .note-workbench__tag-list {
@@ -680,129 +617,28 @@ async function loadMore() {
   flex-wrap: wrap;
 }
 
-.note-workbench__insight {
-  margin-top: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.note-workbench__insight-scroll {
-  max-height: calc(100vh - 190px);
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.note-workbench__insight-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-}
-
-.note-workbench__insight-state {
-  margin-top: 14px;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(47, 93, 80, 0.12);
-  background: rgba(47, 93, 80, 0.05);
-}
-
-.note-workbench__insight-state.is-danger {
-  border-color: rgba(190, 76, 60, 0.22);
-  background: rgba(190, 76, 60, 0.08);
-}
-
-.note-workbench__insight-state.is-success {
-  border-color: rgba(47, 93, 80, 0.2);
-  background: rgba(47, 93, 80, 0.08);
-}
-
-.note-workbench__insight-state strong {
-  display: block;
-  margin-bottom: 6px;
-}
-
-.note-workbench__insight-state p {
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.7;
-}
-
-.note-workbench__insight p {
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.8;
-}
-
-.note-workbench__insight-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-secondary);
-  line-height: 1.8;
-}
-
-.note-workbench__insight-list li + li {
-  margin-top: 6px;
-}
-
-.note-workbench__insight--placeholder {
-  padding: 16px;
-  border-radius: 14px;
-  background: rgba(47, 93, 80, 0.06);
-}
-
-.note-workbench__insight--error {
-  color: #b2523c;
-}
-
-.note-workbench__insight-references {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.note-workbench__insight-reference {
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(251, 248, 242, 0.72);
-  cursor: pointer;
-}
-
-.note-workbench__insight-reference-title {
-  margin: 0 0 8px;
-  color: var(--brand-primary);
-  font-size: 0.88rem;
-}
-
-.note-workbench__insight-reference blockquote {
-  margin: 0;
-  padding-left: 12px;
-  border-left: 3px solid rgba(192, 139, 92, 0.5);
-  color: var(--text-secondary);
-  line-height: 1.75;
-}
-
 @media (max-width: 1280px) {
   .note-workbench__grid {
     grid-template-columns: 1fr;
   }
-
-  .note-workbench__left,
-  .note-workbench__right {
-    position: static;
-  }
 }
 
 @media (max-width: 768px) {
-  .note-workbench__toolbar,
-  .note-workbench__toolbar-actions {
+  .note-workbench__hero {
+    align-items: flex-start;
     flex-direction: column;
-    align-items: stretch;
+    padding: 22px;
   }
 
-  .note-workbench__search {
-    min-width: 0;
+  .note-workbench__hero-stats {
+    width: 100%;
+    text-align: left;
+  }
+
+  .note-workbench__result-bar {
+    align-items: flex-start;
+    border-radius: 18px;
+    flex-direction: column;
   }
 }
 </style>

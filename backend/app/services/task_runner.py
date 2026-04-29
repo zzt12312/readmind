@@ -1,3 +1,15 @@
+"""Local background job orchestration.
+
+ReadMind is currently a local-first app, so background work runs in a small
+in-process `ThreadPoolExecutor` and persists status to SQLite through
+`job_repository`. This is intentionally simple for local demos, but it is not a
+distributed production queue: queued jobs are not recovered across process
+crashes and workers do not run across multiple machines.
+
+If the project later targets server deployment, this module is the seam to
+replace with Celery/RQ/Arq or a `TaskQueue` interface.
+"""
+
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor

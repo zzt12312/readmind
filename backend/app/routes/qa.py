@@ -3,49 +3,15 @@ import json
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
 from ..services.llm_client import LLMClientError, create_llm_client
+from ..services.qa_service import (
+    SYSTEM_PROMPT,
+    build_evidence_summary,
+    build_llm_messages,
+    split_stream_chunks,
+)
 from ..services.vault_parser import answer_question, vault_repository
-from ..services.vault_parser import format_qa_context
 
 qa_bp = Blueprint("qa", __name__)
-
-
-SYSTEM_PROMPT = (
-    "你是一个基于个人读书笔记回答问题的中文助手。"
-    "只能依据提供的摘录作答，不要凭空补充书外事实。"
-    "回答要求：1. 先直接回答问题；2. 再用 2 到 4 点归纳关键结论；"
-    "3. 如果证据不足，要明确说明；4. 不要输出<think>；"
-    "5. 若当前检索范围限定为单本书，不要引用其他书。"
-)
-
-
-def build_evidence_summary(references: list[dict]) -> dict:
-    reference_count = len(references)
-    suggested_points = min(3, reference_count) if reference_count else 0
-    sufficient = reference_count >= 3
-    if reference_count == 0:
-        message = "当前没有命中可引用的笔记，回答只能基于回退逻辑生成。"
-    elif sufficient:
-        message = f"当前命中 {reference_count} 条引用，足以支撑一轮较完整的回答。"
-    else:
-        message = f"当前仅命中 {reference_count} 条引用，更适合回答 {suggested_points} 个重点。"
-    return {
-        "reference_count": reference_count,
-        "suggested_points": suggested_points,
-        "sufficient": sufficient,
-        "message": message,
-    }
-
-
-def build_llm_messages(history: list[dict], question: str, references: list[dict]) -> list[dict[str, str]]:
-    messages: list[dict[str, str]] = []
-    for item in history[-8:]:
-        role = item.get("role")
-        content = (item.get("content") or "").strip()
-        if role in {"user", "assistant"} and content:
-            messages.append({"role": role, "content": content})
-    # 最后一条 user message 会附带当前问题和检索到的引用，确保模型回答严格围绕笔记上下文展开。
-    messages.append({"role": "user", "content": format_qa_context(question, references)})
-    return messages
 
 
 def sse_event(event: str, payload: dict) -> str:
@@ -170,12 +136,12 @@ def ask_stream():
         yield sse_event(
             "done",
             {
-                    "question": fallback["question"],
-                    "answer": answer,
-                    "references": fallback["references"],
-                    "evidence": evidence,
-                    "generation_mode": generation_mode,
-                    "retrieval_mode": retrieval_mode,
+                "question": fallback["question"],
+                "answer": answer,
+                "references": fallback["references"],
+                "evidence": evidence,
+                "generation_mode": generation_mode,
+                "retrieval_mode": retrieval_mode,
                 "fallback_reason": fallback_reason,
                 "query_rewrite": fallback.get("query_rewrite"),
             },
@@ -189,7 +155,3 @@ def ask_stream():
             "X-Accel-Buffering": "no",
         },
     )
-
-
-def split_stream_chunks(text: str, step: int = 24) -> list[str]:
-    return [text[index : index + step] for index in range(0, len(text), step)] or [text]

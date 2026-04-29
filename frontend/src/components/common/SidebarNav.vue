@@ -3,16 +3,25 @@ import {
   CollectionTag,
   DataAnalysis,
   DocumentAdd,
+  Histogram,
   Notebook,
   Reading,
   ChatLineRound,
+  Expand,
+  Fold,
   Share,
   List,
 } from '@element-plus/icons-vue'
+import { storeToRefs } from 'pinia'
 import { routes } from '@/constants/routes'
+import { useAppStore } from '@/stores/app'
+
+const appStore = useAppStore()
+const { sidebarCollapsed } = storeToRefs(appStore)
 
 const items = [
   { label: '首页', to: routes.dashboard, icon: DataAnalysis },
+  { label: '看板', to: routes.analytics, icon: Histogram },
   { label: '导入', to: routes.import, icon: DocumentAdd },
   { label: '书库', to: routes.books, icon: Reading },
   { label: '笔记', to: routes.notes, icon: Notebook },
@@ -24,14 +33,25 @@ const items = [
 </script>
 
 <template>
-  <aside class="sidebar">
-    <RouterLink class="sidebar__brand" :to="routes.dashboard">
+  <aside class="sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
+    <RouterLink class="sidebar__brand" :to="routes.dashboard" title="ReadMind">
       <div class="sidebar__brand-mark">RM</div>
       <div class="sidebar__brand-copy">
         <strong>ReadMind</strong>
         <span>Reading cockpit</span>
       </div>
     </RouterLink>
+
+    <button
+      class="sidebar__toggle"
+      type="button"
+      :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+      :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+      @click="appStore.toggleSidebar"
+    >
+      <el-icon><component :is="sidebarCollapsed ? Expand : Fold" /></el-icon>
+      <span>{{ sidebarCollapsed ? '展开目录' : '沉浸模式' }}</span>
+    </button>
 
     <nav class="sidebar__nav">
       <RouterLink
@@ -40,6 +60,7 @@ const items = [
         :to="item.to"
         class="sidebar__nav-item"
         active-class="is-active"
+        :title="item.label"
       >
         <el-icon><component :is="item.icon" /></el-icon>
         <span>{{ item.label }}</span>
@@ -60,6 +81,9 @@ const items = [
   background: rgba(251, 248, 242, 0.88);
   border-right: 1px solid var(--border-light);
   backdrop-filter: blur(14px);
+  transition:
+    padding 0.2s ease,
+    gap 0.2s ease;
 }
 
 .sidebar__brand {
@@ -99,6 +123,29 @@ const items = [
   font-size: 0.78rem;
 }
 
+.sidebar__toggle {
+  width: 100%;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(47, 93, 80, 0.12);
+  border-radius: var(--radius-sm);
+  background: rgba(47, 93, 80, 0.07);
+  color: var(--brand-primary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+
+.sidebar__toggle:hover {
+  background: rgba(47, 93, 80, 0.12);
+  transform: translateX(2px);
+}
+
 .sidebar__nav {
   display: flex;
   flex-direction: column;
@@ -123,8 +170,34 @@ const items = [
   transform: translateX(2px);
 }
 
+.sidebar.is-collapsed {
+  padding-inline: 14px;
+  gap: 20px;
+}
+
+.sidebar.is-collapsed .sidebar__brand,
+.sidebar.is-collapsed .sidebar__toggle,
+.sidebar.is-collapsed .sidebar__nav-item {
+  justify-content: center;
+}
+
+.sidebar.is-collapsed .sidebar__brand {
+  padding-inline: 10px;
+}
+
+.sidebar.is-collapsed .sidebar__brand-copy,
+.sidebar.is-collapsed .sidebar__toggle span,
+.sidebar.is-collapsed .sidebar__nav-item span {
+  display: none;
+}
+
+.sidebar.is-collapsed .sidebar__nav-item {
+  padding-inline: 12px;
+}
+
 @media (max-width: 1100px) {
   .sidebar__brand-copy,
+  .sidebar__toggle span,
   .sidebar__nav-item span {
     display: none;
   }

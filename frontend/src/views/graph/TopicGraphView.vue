@@ -6,8 +6,8 @@ import AppCard from '@/components/base/AppCard.vue'
 import AppSection from '@/components/base/AppSection.vue'
 import AppMetricCard from '@/components/base/AppMetricCard.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
-import { fetchJobDetail } from '@/api/modules/jobs'
 import { getTopicGraph } from '@/api/modules/insights'
+import { useJobPolling } from '@/composables/useJobPolling'
 import type { TopicGraphLink, TopicGraphNode, TopicGraphPayload } from '@/types/insights'
 
 const TopicGraphChart = defineAsyncComponent(() => import('@/components/graph/TopicGraphChart.vue'))
@@ -24,8 +24,9 @@ const detailRef = ref<HTMLElement | null>(null)
 const selectedGraphNodeName = ref('')
 const graphJobStatus = ref<'' | 'queued' | 'processing' | 'success' | 'failed' | 'canceled'>('')
 const graphJobMessage = ref('')
+const { pollJob } = useJobPolling()
 
-const palette = ['#2f5d50', '#c08b5c', '#4d7487', '#7e685a', '#8f5b48', '#5f7b6c']
+const palette = ['#2f5d50', '#c58b5c', '#557f73', '#8c6f5a', '#4f7388', '#9a7650']
 
 const overviewMetrics = computed(() => {
   const overview = payload.value?.overview
@@ -70,12 +71,17 @@ const pageDescription = computed(() =>
     ? '先按历史、经济、心理、文学等阅读领域聚类，再展示每个领域内部的高频主题。'
     : '基于你真实读书笔记中的标签、章节和高亮共现关系，自动聚合出跨书知识主题网络。',
 )
+const activeFilterCount = computed(
+  () => [selectedCategory.value, selectedBookId.value, selectedTimeScope.value !== 'all' ? selectedTimeScope.value : ''].filter(Boolean).length,
+)
 
 const selectedCluster = computed(() => {
   if (!clusters.value.length) return null
   if (selectedClusterId.value === null) return clusters.value[0]
   return clusters.value.find((cluster) => cluster.id === selectedClusterId.value) ?? clusters.value[0]
 })
+
+const graphLegend = computed(() => clusters.value.slice(0, 6))
 
 function clusterColor(clusterId: number) {
   return palette[((clusterId % palette.length) + palette.length) % palette.length]
@@ -98,16 +104,34 @@ const graphOption = computed(() => {
       itemStyle: {
         color: clusterColor(node.cluster_id),
         opacity: 0.96,
-        borderWidth: isSelectedNode ? 4 : 0,
-        borderColor: isSelectedNode ? 'rgba(36, 49, 45, 0.9)' : 'transparent',
-        shadowBlur: isSelectedNode ? 20 : 10,
-        shadowColor: isSelectedNode ? 'rgba(36, 49, 45, 0.22)' : 'rgba(47, 93, 80, 0.12)',
+        borderWidth: isSelectedNode ? 5 : 2,
+        borderColor: isSelectedNode ? '#fffdf9' : 'rgba(255, 253, 249, 0.92)',
+        shadowBlur: isSelectedNode ? 28 : 14,
+        shadowColor: isSelectedNode ? 'rgba(47, 93, 80, 0.28)' : 'rgba(47, 93, 80, 0.16)',
       },
       label: {
         show: true,
         color: '#24312d',
         fontSize: isSelectedNode ? 15 : selectedMode.value === 'category' ? 14 : 13,
-        fontWeight: isSelectedNode ? 700 : 500,
+        fontWeight: isSelectedNode ? 800 : 700,
+        backgroundColor: 'rgba(255, 253, 249, 0.78)',
+        borderColor: 'rgba(216, 207, 191, 0.5)',
+        borderWidth: 1,
+        borderRadius: 10,
+        padding: [4, 7],
+      },
+      emphasis: {
+        scale: true,
+        itemStyle: {
+          borderColor: '#fffdf9',
+          borderWidth: 5,
+          shadowBlur: 30,
+          shadowColor: 'rgba(47, 93, 80, 0.3)',
+        },
+        label: {
+          color: '#1f3932',
+          fontWeight: 900,
+        },
       },
     }
   })
@@ -119,27 +143,40 @@ const graphOption = computed(() => {
     return {
       ...link,
       lineStyle: {
-        color: isSelectedLink ? 'rgba(36, 49, 45, 0.42)' : 'rgba(47, 93, 80, 0.22)',
+        color: isSelectedLink ? 'rgba(47, 93, 80, 0.48)' : 'rgba(47, 93, 80, 0.18)',
         width: Math.max(1, Math.min(link.value, selectedMode.value === 'category' ? 8 : 5)),
-        opacity: isSelectedLink ? 0.95 : 0.78,
-        curveness: selectedMode.value === 'category' ? 0.18 : 0.08,
+        opacity: isSelectedLink ? 0.95 : 0.62,
+        curveness: selectedMode.value === 'category' ? 0.22 : 0.12,
+      },
+      emphasis: {
+        lineStyle: {
+          color: 'rgba(47, 93, 80, 0.58)',
+          opacity: 1,
+          width: Math.max(2, Math.min(link.value + 1, selectedMode.value === 'category' ? 9 : 6)),
+        },
       },
     }
   })
 
   return {
+    backgroundColor: 'transparent',
+    color: palette,
     tooltip: {
       trigger: 'item',
-      backgroundColor: 'rgba(36, 42, 39, 0.92)',
-      borderWidth: 0,
+      backgroundColor: 'rgba(36, 49, 45, 0.94)',
+      borderColor: 'rgba(255, 253, 249, 0.16)',
+      borderWidth: 1,
+      extraCssText: 'border-radius: 14px; box-shadow: 0 16px 34px rgba(36, 49, 45, 0.24);',
+      padding: [10, 12],
       textStyle: {
         color: '#f6f1e7',
+        fontSize: 13,
       },
       formatter: (params: { dataType?: string; data?: Record<string, unknown> }) => {
         if (params.dataType === 'edge') {
-          return `${String(params.data?.source)} ↔ ${String(params.data?.target)}<br/>关联强度：${String(params.data?.value)}`
+          return `<strong>${String(params.data?.source)} ↔ ${String(params.data?.target)}</strong><br/>关联强度：${String(params.data?.value)}`
         }
-        return `${String(params.data?.name)}<br/>关联笔记：${String(params.data?.value)}`
+        return `<strong>${String(params.data?.name)}</strong><br/>关联笔记：${String(params.data?.value)}`
       },
     },
     series: [
@@ -149,20 +186,48 @@ const graphOption = computed(() => {
         roam: false,
         draggable: true,
         focusNodeAdjacency: true,
+        edgeSymbol: ['none', 'circle'],
+        edgeSymbolSize: [0, 5],
         force: {
-          repulsion: selectedMode.value === 'category' ? 420 : 280,
-          edgeLength: selectedMode.value === 'category' ? [160, 260] : [90, 180],
+          repulsion: selectedMode.value === 'category' ? 520 : 340,
+          edgeLength: selectedMode.value === 'category' ? [170, 280] : [110, 200],
           gravity: selectedMode.value === 'category' ? 0.02 : 0.04,
+          friction: 0.18,
         },
         circular: {
           rotateLabel: false,
         },
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: 24,
+        left: 36,
+        right: 36,
+        top: 44,
+        bottom: 40,
         data: nodes,
         links,
+        categories: clusters.value.map((cluster) => ({
+          name: cluster.name,
+          itemStyle: { color: clusterColor(cluster.id) },
+        })),
+        lineStyle: {
+          cap: 'round',
+        },
+        emphasis: {
+          focus: 'adjacency',
+          blurScope: 'coordinateSystem',
+        },
+        blur: {
+          itemStyle: {
+            opacity: 0.28,
+          },
+          lineStyle: {
+            opacity: 0.12,
+          },
+          label: {
+            opacity: 0.35,
+          },
+        },
+        animationDuration: 900,
+        animationDurationUpdate: 700,
+        animationEasingUpdate: 'cubicOut',
       },
     ],
   }
@@ -204,27 +269,27 @@ async function loadGraph() {
 }
 
 async function pollGraphJob(jobId: string) {
-  // 图谱分析是最重的一类总结任务之一，因此这里采用与摘要/洞察一致的后台任务轮询模式。
-  for (let index = 0; index < 80; index += 1) {
-    const job = await fetchJobDetail(jobId)
-    graphJobStatus.value = job.status
-    graphJobMessage.value = job.message || ''
-
-    if (job.status === 'success' && job.result) {
+  await pollJob(jobId, {
+    maxAttempts: 80,
+    intervalMs: 1500,
+    onProgress: (job) => {
+      graphJobStatus.value = job.status
+      graphJobMessage.value = job.message || ''
+    },
+    onSuccess: (job) => {
+      if (!job.result) return
       payload.value = job.result as TopicGraphPayload
       selectedClusterId.value = payload.value.clusters[0]?.id ?? null
       selectedGraphNodeName.value = payload.value.clusters[0]?.name ?? ''
       ElMessage.success('图谱分析完成')
-      return
-    }
-
-    if (job.status === 'failed') {
-      throw new Error(job.error_message || '图谱分析失败')
-    }
-
-    await new Promise((resolve) => window.setTimeout(resolve, 1500))
-  }
-  graphJobMessage.value = '图谱仍在分析中，请稍后再看'
+    },
+    onFailed: (job) => {
+      graphJobMessage.value = job.error_message || '图谱分析失败'
+    },
+    onTimeout: () => {
+      graphJobMessage.value = '图谱仍在分析中，请稍后再看'
+    },
+  })
 }
 
 function handleCategoryChange() {
@@ -296,39 +361,64 @@ onMounted(() => {
     <PageHeader
       title="知识图谱"
       :description="pageDescription"
-    >
-      <div class="topic-graph-view__toolbar">
-        <el-segmented v-model="selectedMode" :options="availableModes" />
-        <el-select
-          v-model="selectedCategory"
-          clearable
-          placeholder="按分类筛选"
-          style="width: 180px"
-          @change="handleCategoryChange"
-        >
-          <el-option v-for="category in availableCategories" :key="category" :label="category" :value="category" />
-        </el-select>
-        <el-select
-          v-model="selectedBookId"
-          clearable
-          filterable
-          placeholder="按书籍筛选"
-          style="width: 220px"
-        >
-          <el-option v-for="book in filteredBooks" :key="book.id" :label="book.title" :value="book.id" />
-        </el-select>
-        <el-select v-model="selectedTimeScope" style="width: 160px">
-          <el-option
-            v-for="option in availableTimeScopes"
-            :key="option.value"
-            :label="option.label"
-            :value="option.value"
-          />
-        </el-select>
-        <el-button round @click="resetFilters">重置</el-button>
-        <el-button type="primary" round @click="loadGraph">重新分析</el-button>
+    />
+
+    <AppCard class="topic-graph-view__control-panel">
+      <div class="topic-graph-view__control-glow" aria-hidden="true" />
+      <div class="topic-graph-view__control-header">
+        <div>
+          <p>Graph Controls</p>
+          <h3>图谱筛选</h3>
+        </div>
+        <div class="topic-graph-view__filter-status" :class="{ 'is-active': activeFilterCount }">
+          <span>{{ activeFilterCount ? `${activeFilterCount} 个筛选` : '全量视图' }}</span>
+          <strong>{{ selectedMode === 'category' ? '领域聚类' : '主题共现' }}</strong>
+        </div>
       </div>
-    </PageHeader>
+      <div class="topic-graph-view__control-grid">
+        <label class="topic-graph-view__control-field is-mode">
+          <span>分析方式</span>
+          <el-segmented v-model="selectedMode" :options="availableModes" />
+        </label>
+        <label class="topic-graph-view__control-field">
+          <span>分类</span>
+          <el-select
+            v-model="selectedCategory"
+            clearable
+            placeholder="全部分类"
+            @change="handleCategoryChange"
+          >
+            <el-option v-for="category in availableCategories" :key="category" :label="category" :value="category" />
+          </el-select>
+        </label>
+        <label class="topic-graph-view__control-field">
+          <span>书籍</span>
+          <el-select
+            v-model="selectedBookId"
+            clearable
+            filterable
+            placeholder="全部书籍"
+          >
+            <el-option v-for="book in filteredBooks" :key="book.id" :label="book.title" :value="book.id" />
+          </el-select>
+        </label>
+        <label class="topic-graph-view__control-field">
+          <span>时间</span>
+          <el-select v-model="selectedTimeScope">
+            <el-option
+              v-for="option in availableTimeScopes"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </label>
+        <div class="topic-graph-view__control-actions">
+          <el-button round @click="resetFilters">重置</el-button>
+          <el-button type="primary" round @click="loadGraph">重新分析</el-button>
+        </div>
+      </div>
+    </AppCard>
 
     <section v-if="overviewMetrics.length" class="topic-graph-view__metrics">
       <AppMetricCard
@@ -383,7 +473,29 @@ onMounted(() => {
           title="主题关系图"
           description="节点代表主题，连线代表它们在同一条笔记或同一批书里反复共现。点击节点会联动左侧主题簇。"
         />
-        <TopicGraphChart v-if="clusters.length" :option="graphOption" @click="handleChartClick" />
+        <div v-if="clusters.length" class="topic-graph-view__graph-stage">
+          <div class="topic-graph-view__graph-orbit" aria-hidden="true" />
+          <div class="topic-graph-view__graph-toolbar">
+            <div class="topic-graph-view__graph-focus">
+              <span>当前聚焦</span>
+              <strong>{{ selectedCluster?.name || '全部主题' }}</strong>
+            </div>
+            <div class="topic-graph-view__graph-legend" aria-label="主题簇颜色说明">
+              <button
+                v-for="cluster in graphLegend"
+                :key="cluster.id"
+                type="button"
+                :class="{ 'is-active': selectedCluster?.id === cluster.id }"
+                @click="selectCluster(cluster.id)"
+              >
+                <span :style="{ backgroundColor: clusterColor(cluster.id) }" />
+                {{ cluster.name }}
+              </button>
+            </div>
+          </div>
+          <TopicGraphChart :option="graphOption" @click="handleChartClick" />
+          <p class="topic-graph-view__graph-hint">可拖拽节点微调位置，点击节点查看对应主题簇。</p>
+        </div>
         <div v-else-if="graphJobStatus === 'queued' || graphJobStatus === 'processing'" class="topic-graph-view__placeholder">
           <strong>{{ graphJobStatus === 'processing' ? '正在构建主题关系图' : '图谱分析任务已创建' }}</strong>
           <p>{{ graphJobMessage || '图谱会在后台分析完成后自动刷新，不会阻塞页面其他操作。' }}</p>
@@ -450,13 +562,6 @@ onMounted(() => {
   gap: 16px;
 }
 
-.topic-graph-view__toolbar {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .topic-graph-view__layout {
   display: grid;
   grid-template-columns: 360px minmax(0, 1fr);
@@ -464,9 +569,379 @@ onMounted(() => {
   align-items: stretch;
 }
 
+.topic-graph-view__control-panel {
+  position: relative;
+  overflow: hidden;
+  padding: 22px;
+  border-color: rgba(216, 207, 191, 0.72);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(47, 93, 80, 0.14), transparent 28%),
+    radial-gradient(circle at 92% 16%, rgba(197, 139, 92, 0.16), transparent 30%),
+    linear-gradient(135deg, rgba(255, 253, 249, 0.98), rgba(248, 242, 232, 0.92));
+}
+
+.topic-graph-view__control-panel::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border: 1px solid rgba(255, 253, 249, 0.74);
+  border-radius: 24px;
+  pointer-events: none;
+}
+
+.topic-graph-view__control-glow {
+  position: absolute;
+  right: -48px;
+  top: -76px;
+  width: 190px;
+  height: 190px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(197, 139, 92, 0.18), transparent 68%);
+  pointer-events: none;
+}
+
+.topic-graph-view__control-header {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.topic-graph-view__control-header p {
+  margin: 0 0 4px;
+  color: var(--brand-accent);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.topic-graph-view__control-header h3 {
+  margin: 0;
+  color: var(--brand-primary);
+}
+
+.topic-graph-view__filter-status {
+  min-width: 136px;
+  padding: 9px 12px;
+  border: 1px solid rgba(216, 207, 191, 0.62);
+  border-radius: 18px;
+  background: rgba(255, 253, 249, 0.72);
+  box-shadow: 0 10px 24px rgba(47, 93, 80, 0.08);
+  text-align: right;
+}
+
+.topic-graph-view__filter-status span {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.topic-graph-view__filter-status strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--brand-primary);
+  font-size: 0.95rem;
+}
+
+.topic-graph-view__filter-status.is-active {
+  border-color: rgba(47, 93, 80, 0.24);
+  background:
+    linear-gradient(135deg, rgba(47, 93, 80, 0.08), rgba(255, 253, 249, 0.86)),
+    rgba(255, 253, 249, 0.86);
+}
+
+.topic-graph-view__control-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(150px, 0.8fr) minmax(220px, 1fr) minmax(150px, 0.7fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.topic-graph-view__control-field {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(216, 207, 191, 0.5);
+  border-radius: 20px;
+  background: rgba(255, 253, 249, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.topic-graph-view__control-field > span {
+  color: var(--brand-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+}
+
+.topic-graph-view__control-field :deep(.el-select),
+.topic-graph-view__control-field :deep(.el-segmented) {
+  width: 100%;
+}
+
+.topic-graph-view__control-field :deep(.el-select__wrapper),
+.topic-graph-view__control-field :deep(.el-segmented) {
+  min-height: 42px;
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.92);
+  box-shadow: none;
+}
+
+.topic-graph-view__control-field :deep(.el-select__wrapper) {
+  border: 1px solid rgba(216, 207, 191, 0.66);
+}
+
+.topic-graph-view__control-field :deep(.el-select__wrapper.is-focused) {
+  border-color: rgba(47, 93, 80, 0.34);
+  box-shadow: 0 0 0 3px rgba(47, 93, 80, 0.08);
+}
+
+.topic-graph-view__control-field :deep(.el-segmented) {
+  padding: 3px;
+  border: 1px solid rgba(216, 207, 191, 0.66);
+  border-radius: 999px;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(255, 253, 249, 0.96), rgba(248, 242, 232, 0.76));
+}
+
+.topic-graph-view__control-field :deep(.el-segmented__group) {
+  gap: 3px;
+}
+
+.topic-graph-view__control-field :deep(.el-segmented__item) {
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-weight: 800;
+  transition:
+    color 0.18s ease,
+    transform 0.18s ease,
+    background 0.18s ease;
+}
+
+.topic-graph-view__control-field :deep(.el-segmented__item:hover:not(.is-selected)) {
+  background: rgba(47, 93, 80, 0.06);
+  color: var(--brand-primary);
+  transform: translateY(-1px);
+}
+
+.topic-graph-view__control-field :deep(.el-segmented__item-label) {
+  padding-inline: 8px;
+}
+
+.topic-graph-view__control-field :deep(.el-segmented__item-selected) {
+  top: 2px;
+  bottom: 2px;
+  height: auto;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 18% 10%, rgba(255, 253, 249, 0.42), transparent 36%),
+    linear-gradient(135deg, rgba(47, 93, 80, 0.9), rgba(76, 126, 109, 0.84));
+  color: #fffdf9;
+  box-shadow:
+    0 8px 18px rgba(47, 93, 80, 0.14),
+    inset 0 1px 0 rgba(255, 253, 249, 0.28);
+}
+
+.topic-graph-view__control-actions {
+  padding: 12px;
+  border: 1px solid rgba(216, 207, 191, 0.46);
+  border-radius: 20px;
+  background: rgba(255, 253, 249, 0.5);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.topic-graph-view__control-actions :deep(.el-button) {
+  min-height: 42px;
+  padding-inline: 18px;
+  font-weight: 900;
+}
+
+.topic-graph-view__control-actions :deep(.el-button--primary) {
+  border-color: transparent;
+  background:
+    linear-gradient(135deg, var(--brand-primary), #447967);
+  box-shadow: 0 12px 26px rgba(47, 93, 80, 0.18);
+}
+
+.topic-graph-view__control-actions :deep(.el-button:not(.el-button--primary)) {
+  border-color: rgba(216, 207, 191, 0.72);
+  background: rgba(255, 253, 249, 0.86);
+  color: var(--text-secondary);
+}
+
 .topic-graph-view__clusters,
 .topic-graph-view__graph {
   min-height: 680px;
+}
+
+.topic-graph-view__graph {
+  position: relative;
+  overflow: hidden;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(197, 139, 92, 0.16), transparent 26%),
+    radial-gradient(circle at 88% 12%, rgba(47, 93, 80, 0.13), transparent 28%),
+    linear-gradient(145deg, rgba(255, 253, 249, 0.98), rgba(248, 242, 232, 0.9));
+}
+
+.topic-graph-view__graph::before {
+  content: '';
+  position: absolute;
+  inset: 18px;
+  border: 1px solid rgba(216, 207, 191, 0.36);
+  border-radius: 28px;
+  pointer-events: none;
+}
+
+.topic-graph-view__graph-stage {
+  position: relative;
+  overflow: hidden;
+  margin-top: 16px;
+  min-height: 620px;
+  border: 1px solid rgba(216, 207, 191, 0.58);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(47, 93, 80, 0.08), transparent 34%),
+    linear-gradient(rgba(47, 93, 80, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47, 93, 80, 0.035) 1px, transparent 1px),
+    rgba(255, 253, 249, 0.78);
+  background-size:
+    auto,
+    42px 42px,
+    42px 42px,
+    auto;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 18px 42px rgba(47, 93, 80, 0.08);
+}
+
+.topic-graph-view__graph-orbit {
+  position: absolute;
+  inset: 86px 12%;
+  border: 1px dashed rgba(47, 93, 80, 0.16);
+  border-radius: 999px;
+  transform: rotate(-8deg);
+}
+
+.topic-graph-view__graph-orbit::before,
+.topic-graph-view__graph-orbit::after {
+  content: '';
+  position: absolute;
+  border: 1px dashed rgba(197, 139, 92, 0.16);
+  border-radius: 999px;
+}
+
+.topic-graph-view__graph-orbit::before {
+  inset: 34px 12%;
+  transform: rotate(16deg);
+}
+
+.topic-graph-view__graph-orbit::after {
+  inset: 78px 23%;
+  transform: rotate(-20deg);
+}
+
+.topic-graph-view__graph-toolbar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px 18px 0;
+}
+
+.topic-graph-view__graph-focus {
+  min-width: 160px;
+  padding: 10px 13px;
+  border: 1px solid rgba(47, 93, 80, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 253, 249, 0.82);
+  box-shadow: 0 12px 28px rgba(47, 93, 80, 0.08);
+}
+
+.topic-graph-view__graph-focus span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-tertiary);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.topic-graph-view__graph-focus strong {
+  color: var(--brand-primary);
+}
+
+.topic-graph-view__graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.topic-graph-view__graph-legend button {
+  padding: 7px 10px;
+  border: 1px solid rgba(216, 207, 191, 0.66);
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.72);
+  color: var(--text-secondary);
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 800;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+.topic-graph-view__graph-legend button:hover,
+.topic-graph-view__graph-legend button.is-active {
+  border-color: rgba(47, 93, 80, 0.24);
+  background: rgba(255, 253, 249, 0.94);
+  box-shadow: 0 10px 24px rgba(47, 93, 80, 0.1);
+  transform: translateY(-1px);
+}
+
+.topic-graph-view__graph-legend span {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px rgba(47, 93, 80, 0.08);
+}
+
+.topic-graph-view__graph-hint {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  z-index: 2;
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px solid rgba(216, 207, 191, 0.54);
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.8);
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  backdrop-filter: blur(10px);
 }
 
 .topic-graph-view__cluster-scroll {
@@ -598,12 +1073,21 @@ onMounted(() => {
 
 @media (max-width: 1180px) {
   .topic-graph-view__layout,
-  .topic-graph-view__detail-grid {
+  .topic-graph-view__detail-grid,
+  .topic-graph-view__control-grid {
     grid-template-columns: 1fr;
   }
 
   .topic-graph-view__metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topic-graph-view__graph-toolbar {
+    flex-direction: column;
+  }
+
+  .topic-graph-view__graph-legend {
+    justify-content: flex-start;
   }
 }
 
@@ -613,8 +1097,27 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .topic-graph-view__toolbar {
-    justify-content: stretch;
+  .topic-graph-view__control-actions {
+    justify-content: flex-start;
+  }
+
+  .topic-graph-view__graph {
+    padding: 16px;
+  }
+
+  .topic-graph-view__graph-stage {
+    min-height: 560px;
+    border-radius: 24px;
+  }
+
+  .topic-graph-view__graph-focus {
+    width: 100%;
+  }
+
+  .topic-graph-view__graph-hint {
+    position: static;
+    width: fit-content;
+    margin: -10px 14px 14px;
   }
 
   .topic-graph-view__chart {

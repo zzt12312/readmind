@@ -1,20 +1,24 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Search } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
-import { routes } from '@/constants/routes'
+import { useAuthStore } from '@/stores/auth'
 
-defineProps<{
+withDefaults(defineProps<{
   title: string
-}>()
+  eyebrow?: string
+  contextLabel?: string
+  contextValue?: string
+}>(), {
+  eyebrow: 'Personal knowledge workspace',
+  contextLabel: '当前页',
+  contextValue: '阅读工作台',
+})
 
-const router = useRouter()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const { llmHealth, llmLoading, embeddingWarming } = storeToRefs(appStore)
-const globalKeyword = ref('')
+const { user } = storeToRefs(authStore)
 let embeddingPollTimer: number | null = null
 
 const providerLabel = computed(() => {
@@ -24,6 +28,7 @@ const providerLabel = computed(() => {
 const embeddingLabel = computed(() => {
   if (!llmHealth.value) return 'Embedding 未知'
   if (llmHealth.value.demo_mode && llmHealth.value.embedding_status !== 'ready') return '演示检索已就绪'
+  if (embeddingWarming.value) return 'Embedding 自动预热中'
   if (llmHealth.value.embedding_status === 'ready') return 'Embedding 已就绪'
   if (llmHealth.value.embedding_status === 'loading') return 'Embedding 预热中'
   if (llmHealth.value.embedding_status === 'fallback') return 'Embedding 降级中'
@@ -38,16 +43,11 @@ const embeddingClass = computed(() => {
   return 'is-missing'
 })
 
-const showEmbeddingWarmup = computed(() => {
-  if (!llmHealth.value) return false
-  if (llmHealth.value.demo_mode) return false
-  return llmHealth.value.embedding_status !== 'ready'
-})
-
-onMounted(() => {
+onMounted(async () => {
   if (!llmLoading.value) {
-    void appStore.loadLlmHealth()
+    await appStore.loadLlmHealth()
   }
+  await startAutomaticEmbeddingWarmup()
 })
 
 onBeforeUnmount(() => {
@@ -82,27 +82,7 @@ const llmClass = computed(() => {
   return 'is-fallback'
 })
 
-function submitGlobalSearch() {
-  const query = globalKeyword.value.trim()
-  if (!query) {
-    void router.push(routes.notes)
-    return
-  }
-
-  void router.push({
-    path: routes.notes,
-    query: {
-      q: query,
-    },
-  })
-}
-
-function goToImport() {
-  void router.push(routes.import)
-}
-
-async function startEmbeddingWarmup() {
-  await appStore.startEmbeddingWarmup()
+function pollEmbeddingStatus() {
   if (embeddingPollTimer !== null) {
     window.clearInterval(embeddingPollTimer)
   }
@@ -115,52 +95,50 @@ async function startEmbeddingWarmup() {
       }
     }
   }, 3000)
-  ElMessage.success('已触发 embedding 预热，状态会自动刷新。')
+}
+
+async function startAutomaticEmbeddingWarmup() {
+  const started = await appStore.ensureEmbeddingWarmup()
+  if (started || appStore.llmHealth?.embedding_status === 'loading') {
+    pollEmbeddingStatus()
+  }
 }
 </script>
 
 <template>
   <header class="topbar">
-    <div>
-      <p class="topbar__eyebrow">Personal knowledge workspace</p>
+    <div class="topbar__title">
+      <p class="topbar__eyebrow">{{ eyebrow }}</p>
       <h1>{{ title }}</h1>
     </div>
 
     <div class="topbar__actions">
-      <el-input v-model="globalKeyword" class="topbar__search" placeholder="搜索书籍、标签、观点" @keyup.enter="submitGlobalSearch">
-        <template #prefix>
-          <el-icon><Search /></el-icon>
-        </template>
-        <template #append>
-          <el-button @click="submitGlobalSearch">搜索</el-button>
-        </template>
-      </el-input>
-      <div class="topbar__llm" :class="llmClass" :title="llmHealth?.detail || ''">
-        <span class="topbar__llm-dot" />
-        <strong>{{ llmLabel }}</strong>
-        <span v-if="llmHealth?.model" class="topbar__llm-model">{{ llmHealth.model }}</span>
+      <div class="topbar__status-row">
+        <div class="topbar__llm" :class="llmClass" :title="llmHealth?.detail || ''">
+          <span class="topbar__llm-dot" />
+          <strong>{{ llmLabel }}</strong>
+          <span v-if="llmHealth?.model" class="topbar__llm-model">{{ llmHealth.model }}</span>
+        </div>
+        <div
+          class="topbar__llm"
+          :class="embeddingClass"
+          :title="llmHealth?.embedding_error || llmHealth?.embedding_model || ''"
+        >
+          <span class="topbar__llm-dot" />
+          <strong>{{ embeddingLabel }}</strong>
+          <span v-if="llmHealth?.embedding_provider" class="topbar__llm-model">{{ llmHealth.embedding_provider }}</span>
+        </div>
       </div>
-      <div
-        class="topbar__llm"
-        :class="embeddingClass"
-        :title="llmHealth?.embedding_error || llmHealth?.embedding_model || ''"
-      >
-        <span class="topbar__llm-dot" />
-        <strong>{{ embeddingLabel }}</strong>
-        <span v-if="llmHealth?.embedding_provider" class="topbar__llm-model">{{ llmHealth.embedding_provider }}</span>
-      </div>
-      <el-button
-        v-if="showEmbeddingWarmup"
-        round
-        :loading="embeddingWarming"
-        @click="startEmbeddingWarmup"
-      >
-        预热 Embedding
-      </el-button>
-      <el-button type="primary" round @click="goToImport">导入笔记</el-button>
-      <div class="topbar__user">
-        <strong>Tao</strong>
-        <span>Obsidian reader</span>
+      <div class="topbar__meta-row">
+        <div class="topbar__page-context">
+          <span>{{ contextLabel }}</span>
+          <strong>{{ contextValue }}</strong>
+        </div>
+        <div class="topbar__user">
+          <span class="topbar__user-avatar">{{ (user.name || '本地用户').slice(0, 1) }}</span>
+          <strong>{{ user.name || '本地用户' }}</strong>
+          <span>{{ user.email || 'Obsidian reader' }}</span>
+        </div>
       </div>
     </div>
   </header>
@@ -168,17 +146,21 @@ async function startEmbeddingWarmup() {
 
 <style scoped lang="scss">
 .topbar {
-  padding: 22px 24px 18px;
-  display: flex;
-  justify-content: space-between;
+  padding: 16px 24px;
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(0, 520px);
   align-items: center;
-  gap: 20px;
+  gap: 18px;
   position: sticky;
   top: 0;
   z-index: 10;
   backdrop-filter: blur(12px);
   background: rgba(245, 241, 232, 0.78);
   border-bottom: 1px solid rgba(231, 223, 209, 0.7);
+}
+
+.topbar__title {
+  min-width: 420px;
 }
 
 .topbar h1 {
@@ -194,18 +176,49 @@ async function startEmbeddingWarmup() {
   letter-spacing: 0.08em;
 }
 
-.topbar__actions {
-  display: flex;
+.topbar__page-context {
+  padding: 8px 12px;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  border: 1px solid rgba(47, 93, 80, 0.12);
+  border-radius: 999px;
+  background: rgba(47, 93, 80, 0.07);
+  white-space: nowrap;
 }
 
-.topbar__search {
-  width: 280px;
+.topbar__page-context span {
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+}
+
+.topbar__page-context strong {
+  color: var(--brand-primary);
+  font-size: 0.9rem;
+}
+
+.topbar__actions {
+  display: grid;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.topbar__status-row,
+.topbar__meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.topbar__meta-row {
+  opacity: 0.96;
 }
 
 .topbar__llm {
-  padding: 10px 14px;
+  padding: 8px 12px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -214,6 +227,7 @@ async function startEmbeddingWarmup() {
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-sm);
   white-space: nowrap;
+  max-width: 190px;
 }
 
 .topbar__llm-dot {
@@ -224,8 +238,11 @@ async function startEmbeddingWarmup() {
 }
 
 .topbar__llm-model {
+  overflow: hidden;
+  max-width: 72px;
   color: var(--text-tertiary);
   font-size: 0.78rem;
+  text-overflow: ellipsis;
 }
 
 .topbar__llm.is-checking {
@@ -245,32 +262,70 @@ async function startEmbeddingWarmup() {
 }
 
 .topbar__user {
-  padding: 10px 14px;
+  padding: 8px 12px;
   display: flex;
-  flex-direction: column;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 253, 249, 0.88);
+  align-items: center;
+  gap: 8px;
+  max-width: 190px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.92);
   box-shadow: var(--shadow-sm);
+  white-space: nowrap;
 }
 
-.topbar__user span {
+.topbar__user-avatar {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(47, 93, 80, 0.1);
+  color: var(--brand-primary);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.topbar__user strong,
+.topbar__user span:not(.topbar__user-avatar) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__user span:not(.topbar__user-avatar) {
+  max-width: 72px;
   color: var(--text-tertiary);
   font-size: 0.8rem;
+}
+
+@media (max-width: 1240px) {
+  .topbar__llm-model,
+  .topbar__user span:not(.topbar__user-avatar) {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
   .topbar {
     padding-inline: 16px;
-    flex-direction: column;
+    grid-template-columns: 1fr;
     align-items: stretch;
   }
 
-  .topbar__actions {
-    flex-wrap: wrap;
+  .topbar__title {
+    min-width: 0;
+    max-width: none;
   }
 
-  .topbar__search {
-    width: 100%;
+  .topbar__actions {
+    justify-content: flex-start;
+  }
+
+  .topbar__status-row,
+  .topbar__meta-row {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 </style>

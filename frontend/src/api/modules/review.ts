@@ -1,12 +1,12 @@
 import { apiClient } from '@/api/client'
 import type { ReviewLevel, ReviewRateResponse, ReviewTodayResponse } from '@/types/review'
 
-export async function fetchTodayReview() {
-  const { data } = await apiClient.get<ReviewTodayResponse>('/review/today')
+export async function fetchTodayReview(params?: { daily_goal?: number; queue?: string }) {
+  const { data } = await apiClient.get<ReviewTodayResponse>('/review/today', { params })
   return data
 }
 
-export async function fetchScopedReview(params: { tag?: string; book_id?: number }) {
+export async function fetchScopedReview(params: { tag?: string; book_id?: number; daily_goal?: number; queue?: string }) {
   const { data } = await apiClient.get<ReviewTodayResponse>('/review/today', { params })
   return data
 }

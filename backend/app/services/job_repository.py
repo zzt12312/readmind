@@ -193,7 +193,13 @@ class JobRepository:
     def mark_progress(self, job_id: str, *, progress: int, message: str) -> dict[str, Any] | None:
         return self.update_job(job_id, progress=progress, message=message)
 
-    def mark_success(self, job_id: str, *, result: dict[str, Any], message: str = "任务已完成") -> dict[str, Any] | None:
+    def mark_success(
+        self,
+        job_id: str,
+        *,
+        result: dict[str, Any],
+        message: str = "任务已完成",
+    ) -> dict[str, Any] | None:
         return self.update_job(
             job_id,
             status="success",

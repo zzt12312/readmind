@@ -19,6 +19,15 @@ export interface ImportMeta {
   markdown_count?: number
 }
 
+export interface ImportSyncFeedback {
+  status: 'idle' | 'processing' | 'success' | 'failed'
+  title: string
+  message: string
+  book_count: number
+  note_count: number
+  category_count: number
+}
+
 export interface ImportJobListResponse {
   items: ImportJob[]
   meta: ImportMeta

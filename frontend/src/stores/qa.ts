@@ -1,64 +1,18 @@
 import { defineStore } from 'pinia'
-import { streamQuestion } from '@/api/modules/qa'
+import {
+  createMessageId,
+  createSession,
+  createSessionTitle,
+  loadQaSessions,
+  saveQaSessions,
+  sortSessions,
+} from '@/services/qaSessionStorage'
+import { streamQuestion } from '@/services/qaStreamClient'
 import type { QaAskPayload, QaEvidenceSummary, QaMessage, QaReference, QaSession, QaStatusPayload, QueryRewriteSummary } from '@/types/qa'
 
-const QA_HISTORY_KEY = 'readmind.qa.sessions'
-
-function createSessionTitle(question: string) {
-  return question.trim().slice(0, 20) || '新对话'
-}
-
-function createSessionId() {
-  return `qa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function createMessageId() {
-  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function sortSessions(sessions: QaSession[]) {
-  return [...sessions].sort((left, right) => {
-    if (Boolean(left.pinned) !== Boolean(right.pinned)) {
-      return left.pinned ? -1 : 1
-    }
-    return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
-  })
-}
-
-function normalizeMessage(message: Partial<QaMessage>): QaMessage {
-  return {
-    id: message.id ?? createMessageId(),
-    role: message.role === 'assistant' ? 'assistant' : 'user',
-    content: message.content ?? '',
-    references: message.references ?? [],
-    feedback: message.feedback ?? null,
-  }
-}
-
-// 历史结构会随着功能演进扩展，读取时统一补齐默认字段，避免旧数据导致页面异常。
-function normalizeSession(session: Partial<QaSession>): QaSession {
-  return {
-    id: session.id ?? createSessionId(),
-    title: session.title ?? '新对话',
-    scope: session.scope === 'current-book' ? 'current-book' : 'all-books',
-    book_id: session.book_id,
-    updated_at: session.updated_at ?? new Date().toISOString(),
-    pinned: Boolean(session.pinned),
-    messages: (session.messages ?? []).map((message) => normalizeMessage(message)),
-  }
-}
-
-// 历史会话保存在本地，用户刷新页面后仍能恢复最近的问答上下文。
-function safeLoadSessions(): QaSession[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = window.localStorage.getItem(QA_HISTORY_KEY)
-    return raw ? (JSON.parse(raw) as Partial<QaSession>[]).map((session) => normalizeSession(session)) : []
-  } catch {
-    return []
-  }
-}
-
+// QA store owns conversation state only. Persistence and SSE parsing live in
+// `services/qaSessionStorage` and `services/qaStreamClient` so they can evolve
+// independently from Pinia state transitions.
 export const useQaStore = defineStore('qa', {
   state: () => ({
     question: '',
@@ -91,26 +45,16 @@ export const useQaStore = defineStore('qa', {
   },
   actions: {
     hydrateSessions() {
-      this.sessions = sortSessions(safeLoadSessions())
+      this.sessions = sortSessions(loadQaSessions())
     },
     persistSessions() {
-      if (typeof window === 'undefined') return
-      this.sessions = sortSessions(this.sessions).slice(0, 12)
-      window.localStorage.setItem(QA_HISTORY_KEY, JSON.stringify(this.sessions))
+      this.sessions = saveQaSessions(this.sessions)
     },
     // 会话在首次提问时创建，后续连续追问都复用同一个 session，便于恢复上下文。
     ensureSession(payload: QaAskPayload) {
       if (this.currentSessionId) return this.currentSessionId
 
-      const session: QaSession = {
-        id: createSessionId(),
-        title: createSessionTitle(payload.question),
-        scope: payload.scope ?? 'all-books',
-        book_id: payload.book_id,
-        updated_at: new Date().toISOString(),
-        pinned: false,
-        messages: [],
-      }
+      const session = createSession(payload)
       this.sessions = [session, ...this.sessions]
       this.currentSessionId = session.id
       this.persistSessions()
@@ -201,6 +145,8 @@ export const useQaStore = defineStore('qa', {
       this.updateSessionMessages(nextMessages)
     },
     async ask(payload: QaAskPayload) {
+      // Flow: create/update session -> append user + empty assistant bubble ->
+      // stream meta/status/delta/done events -> persist every visible change.
       this.loading = true
       this.stopped = false
       this.errorMessage = ''
@@ -246,6 +192,8 @@ export const useQaStore = defineStore('qa', {
             onDelta: (data) => {
               const assistantMessage = this.messages[this.messages.length - 1]
               if (assistantMessage?.role === 'assistant') {
+                // Mutate the active assistant bubble for a natural streaming UI,
+                // then persist a shallow copy so restored sessions see progress.
                 assistantMessage.content += data.content
                 this.updateSessionMessages([...this.messages], payload)
               }

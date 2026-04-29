@@ -6,7 +6,8 @@ import re
 from typing import Any
 
 from .llm_client import LLMClientError, create_llm_client
-from .vault_parser import build_notes_payload, format_qa_context, vault_repository
+from .payloads.notes import build_notes_payload
+from .vault_parser import format_qa_context, vault_repository
 
 
 def build_insight_scope_key(payload: dict[str, Any]) -> str:
@@ -43,7 +44,10 @@ def build_structured_fallback(
             "把当前主题整理成 3 句话，作为下一次复习入口。",
             "优先回看当前范围内最常出现的主题标签和对应章节。",
         ],
-        "reasoning": f"本次洞察主要依据当前筛选结果中的 {len(notes)} 条摘录，以及高频主题 {('、'.join(related_topics) if related_topics else '当前范围关键词')} 得出。",
+        "reasoning": (
+            f"本次洞察主要依据当前筛选结果中的 {len(notes)} 条摘录，以及高频主题 "
+            f"{('、'.join(related_topics) if related_topics else '当前范围关键词')} 得出。"
+        ),
     }
 
 
@@ -68,8 +72,10 @@ def parse_structured_insight(raw_text: str, fallback: dict[str, Any]) -> dict[st
         return {
             "core_conclusion": str(parsed.get("core_conclusion") or fallback["core_conclusion"]),
             "key_themes": [str(item) for item in parsed.get("key_themes", [])][:6] or fallback["key_themes"],
-            "review_questions": [str(item) for item in parsed.get("review_questions", [])][:4] or fallback["review_questions"],
-            "action_suggestions": [str(item) for item in parsed.get("action_suggestions", [])][:4] or fallback["action_suggestions"],
+            "review_questions": [str(item) for item in parsed.get("review_questions", [])][:4]
+            or fallback["review_questions"],
+            "action_suggestions": [str(item) for item in parsed.get("action_suggestions", [])][:4]
+            or fallback["action_suggestions"],
             "reasoning": str(parsed.get("reasoning") or fallback["reasoning"]),
         }
 

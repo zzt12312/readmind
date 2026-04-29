@@ -10,15 +10,20 @@ import { useBooksStore } from '@/stores/books'
 const keyword = ref('')
 const booksStore = useBooksStore()
 const { items, loading } = storeToRefs(booksStore)
+const categories = computed(() => Array.from(new Set(items.value.map((book) => book.category).filter(Boolean))))
+const selectedCategory = ref('')
 
 const books = computed(() => {
   const query = keyword.value.trim().toLowerCase()
+  const scopedBooks = selectedCategory.value
+    ? items.value.filter((book) => book.category === selectedCategory.value)
+    : items.value
 
   if (!query) {
-    return items.value
+    return scopedBooks
   }
 
-  return items.value.filter(
+  return scopedBooks.filter(
     (book) =>
       book.title.toLowerCase().includes(query) ||
       book.author.toLowerCase().includes(query) ||
@@ -37,15 +42,27 @@ function prewarmBookSummary(bookId: number) {
 
 <template>
   <div class="book-library">
-    <div class="book-library__toolbar">
-      <AppSearchInput v-model="keyword" />
+    <AppCard class="book-library__hero">
+      <div>
+        <p class="book-library__eyebrow">Library Explorer</p>
+        <h2>{{ keyword ? `搜索「${keyword}」` : '把书库变成可继续整理的阅读档案' }}</h2>
+        <p>按书名、作者、标签或分类快速定位，再进入摘要、笔记和问答工作流。</p>
+      </div>
+      <div class="book-library__hero-stat">
+        <span>当前书籍</span>
+        <strong>{{ books.length }}</strong>
+      </div>
+    </AppCard>
+
+    <AppCard class="book-library__toolbar">
+      <AppSearchInput v-model="keyword" class="book-library__search" />
       <div class="book-library__actions">
-        <el-select placeholder="分类" style="width: 140px">
-          <el-option label="全部分类" value="all" />
+        <el-select v-model="selectedCategory" clearable placeholder="全部分类">
+          <el-option v-for="category in categories" :key="category" :label="category" :value="category" />
         </el-select>
         <el-button round>卡片视图</el-button>
       </div>
-    </div>
+    </AppCard>
 
     <section v-loading="loading" class="book-library__grid">
       <AppCard
@@ -99,15 +116,83 @@ function prewarmBookSummary(bookId: number) {
   gap: 18px;
 }
 
-.book-library__toolbar {
+.book-library__hero {
   display: flex;
   justify-content: space-between;
+  gap: 24px;
+  align-items: flex-end;
+  padding: 26px 28px;
+  background:
+    radial-gradient(circle at 90% 12%, rgba(192, 139, 92, 0.2), transparent 28%),
+    linear-gradient(135deg, rgba(47, 93, 80, 0.1), rgba(255, 253, 249, 0.96) 58%),
+    var(--bg-card);
+}
+
+.book-library__eyebrow {
+  margin: 0 0 8px;
+  color: var(--brand-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.book-library__hero h2 {
+  margin: 0 0 10px;
+  font-size: clamp(1.5rem, 2.2vw, 2.2rem);
+  letter-spacing: -0.04em;
+}
+
+.book-library__hero p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.book-library__hero-stat {
+  min-width: 132px;
+  padding: 15px;
+  border: 1px solid rgba(216, 207, 191, 0.72);
+  border-radius: 22px;
+  text-align: center;
+  background: rgba(255, 253, 249, 0.74);
+}
+
+.book-library__hero-stat span {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+}
+
+.book-library__hero-stat strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--brand-primary);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.book-library__toolbar {
+  padding: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 16px;
+}
+
+.book-library__search {
+  flex: 1;
+  min-width: 260px;
 }
 
 .book-library__actions {
   display: flex;
   gap: 12px;
+  align-items: center;
+}
+
+.book-library__actions :deep(.el-select) {
+  width: 180px;
 }
 
 .book-library__grid {
@@ -172,9 +257,15 @@ function prewarmBookSummary(bookId: number) {
 @media (max-width: 768px) {
   .book-library__toolbar,
   .book-library__actions,
+  .book-library__hero,
   .book-library__card {
     grid-template-columns: 1fr;
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .book-library__hero-stat {
+    text-align: left;
   }
 }
 </style>

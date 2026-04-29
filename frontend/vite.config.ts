@@ -1,10 +1,23 @@
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import AutoImport from 'unplugin-auto-import/vite'
+import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    AutoImport({
+      resolvers: [ElementPlusResolver()],
+      dts: false,
+    }),
+    Components({
+      resolvers: [ElementPlusResolver({ directives: true })],
+      dts: false,
+    }),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -28,12 +41,23 @@ export default defineConfig({
           }
 
           // 把体积较大的基础依赖拆开，避免首屏把所有第三方代码都塞进同一个大 chunk。
-          if (id.includes('echarts') || id.includes('zrender') || id.includes('vue-echarts')) {
-            return 'chart-vendor'
+          if (id.includes('vue-echarts')) {
+            return 'chart-vue-vendor'
           }
 
+          if (id.includes('zrender')) {
+            return 'chart-renderer-vendor'
+          }
+
+          if (id.includes('echarts')) {
+            return 'chart-core-vendor'
+          }
+
+          // Element Plus is imported on demand by route/component. Keeping it
+          // outside a single manual chunk lets Rollup place only the used
+          // pieces next to the pages that need them.
           if (id.includes('element-plus') || id.includes('@element-plus')) {
-            return 'ui-vendor'
+            return
           }
 
           if (id.includes('vue') || id.includes('vue-router') || id.includes('pinia')) {

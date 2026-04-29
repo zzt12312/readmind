@@ -1,5 +1,6 @@
 from flask import Flask
 
+from .analytics import analytics_bp
 from .books import books_bp
 from .dashboard import dashboard_bp
 from .health import health_bp
@@ -16,6 +17,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(health_bp, url_prefix="/api")
     app.register_blueprint(llm_bp, url_prefix="/api/llm")
     app.register_blueprint(jobs_bp, url_prefix="/api/jobs")
+    app.register_blueprint(analytics_bp, url_prefix="/api/analytics")
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
     app.register_blueprint(import_bp, url_prefix="/api/import")
     app.register_blueprint(insights_bp, url_prefix="/api/insights")

@@ -2,6 +2,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from ..services.job_repository import job_repository
 from ..services.task_runner import retry_job
+from .errors import error_response
 
 jobs_bp = Blueprint("jobs", __name__)
 
@@ -23,7 +24,7 @@ def job_list():
 def job_detail(job_id: str):
     job = job_repository.get_job(job_id)
     if job is None:
-        return jsonify({"message": "Job not found"}), 404
+        return error_response("JOB_NOT_FOUND", "Job not found", 404)
     return jsonify(job)
 
 
@@ -31,6 +32,6 @@ def job_detail(job_id: str):
 def retry_job_by_id(job_id: str):
     job = job_repository.get_job(job_id)
     if job is None:
-        return jsonify({"message": "Job not found"}), 404
+        return error_response("JOB_NOT_FOUND", "Job not found", 404)
     retried = retry_job(current_app._get_current_object(), job)
     return jsonify(retried), 202

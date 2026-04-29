@@ -8,6 +8,7 @@ export interface BookItem {
   source_path?: string
   reading_date?: string
   last_read_date?: string
+  reading_time?: string
   progress?: string
   cover?: string
   reading_notes?: string

@@ -4,11 +4,8 @@ import hashlib
 import json
 from typing import Any
 
-from .vault_parser import (
-    build_category_graph_payload,
-    build_filtered_topic_graph_payload,
-    vault_repository,
-)
+from .graph.payloads import build_category_graph_payload, build_filtered_topic_graph_payload
+from .vault_parser import vault_repository
 
 
 def build_graph_scope_key(

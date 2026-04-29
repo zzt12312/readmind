@@ -1,13 +1,28 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import AppCard from '@/components/base/AppCard.vue'
+import QaConversation from '@/components/qa/QaConversation.vue'
+import QaHistoryPanel from '@/components/qa/QaHistoryPanel.vue'
+import QaInputBox from '@/components/qa/QaInputBox.vue'
+import QaReferencePanel from '@/components/qa/QaReferencePanel.vue'
+import QaStatusPanel from '@/components/qa/QaStatusPanel.vue'
+import MascotBubble from '@/components/mascot/MascotBubble.vue'
 import { useAppStore } from '@/stores/app'
 import { useBooksStore } from '@/stores/books'
 import { useQaStore } from '@/stores/qa'
-import { highlightText } from '@/utils/text'
+import { buildQaMascotCue } from '@/constants/mascotMessages'
+import {
+  DEFAULT_QA_DRAFT,
+  QA_QUICK_PROMPTS,
+  buildCurrentBookPrompts,
+  buildDemoQaDefaults,
+  buildFollowupPrompts,
+  buildPersonalQaDefaults,
+} from '@/constants/qaPresets'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,10 +30,10 @@ const appStore = useAppStore()
 const booksStore = useBooksStore()
 const qaStore = useQaStore()
 const { messages, loading, sessions, currentSession, stopped, status, generationMode, retrievalMode, fallbackReason, errorMessage } = storeToRefs(qaStore)
-const draft = ref('我在《认知觉醒》的笔记里，关于长期主义和行动系统记录了哪些内容？')
+const draft = ref(DEFAULT_QA_DRAFT)
 const scope = ref<'all-books' | 'current-book'>('all-books')
 const scopedBookId = ref<number | undefined>()
-const conversationRef = ref<HTMLElement | null>(null)
+const conversationRef = ref<ComponentPublicInstance | null>(null)
 
 const currentScopedBook = computed(() => {
   if (!scopedBookId.value) return null
@@ -56,58 +71,31 @@ const conversationMeta = computed(() => [
     value: currentSession.value ? '已恢复历史对话' : '当前新对话',
   },
 ])
-const statusTone = computed(() => {
-  if (status.value.phase === 'failed') return 'danger'
-  if (status.value.phase === 'fallback') return 'warning'
-  if (status.value.phase === 'success') return generationMode.value === 'fallback' ? 'warning' : 'success'
-  return 'primary'
-})
-
 const followupPrompts = computed(() => {
-  if (scope.value === 'current-book' && currentScopedBook.value) {
-    return [
-      `继续追问《${currentScopedBook.value.title}》里最值得执行的 3 个建议`,
-      `从《${currentScopedBook.value.title}》里挑出最容易忽略的一个观点`,
-      `结合这本书的笔记，帮我整理一个复习清单`,
-    ]
-  }
-
-  return [
-    '把刚才的回答改写成 3 条可执行建议',
-    '继续比较这些观点之间的共性和差异',
-    '基于这些笔记，帮我列出 3 个值得复习的问题',
-  ]
+  return buildFollowupPrompts(scope.value, currentScopedBook.value)
 })
+const mascotCue = computed(() => buildQaMascotCue({
+  loading: loading.value,
+  hasAnswer: Boolean(latestAssistantMessage.value),
+  scopedBookTitle: scope.value === 'current-book' ? currentScopedBook.value?.title : undefined,
+}))
 
 const currentBookPrompts = computed(() => {
-  if (!currentScopedBook.value) return []
-  return [
-    `《${currentScopedBook.value.title}》里最值得复习的 5 个观点是什么？`,
-    `《${currentScopedBook.value.title}》里有哪些可以直接执行的建议？`,
-    `只基于《${currentScopedBook.value.title}》，帮我整理 3 个复习问题`,
-  ]
+  return buildCurrentBookPrompts(currentScopedBook.value)
 })
 
 function applyDemoDefaults() {
-  scope.value = 'current-book'
-  scopedBookId.value = 3
-  draft.value = '《南明史》里最值得回看的 3 个观点是什么？'
+  const defaults = buildDemoQaDefaults()
+  scope.value = defaults.scope
+  scopedBookId.value = defaults.bookId
+  draft.value = defaults.draft
 }
 
 function applyPersonalDefaults() {
-  const sorted = [...booksStore.items].sort((left, right) =>
-    (right.last_read_date || right.reading_date || '').localeCompare(left.last_read_date || left.reading_date || ''),
-  )
-  const latestBook = sorted[0]
-  if (!latestBook) {
-    scope.value = 'all-books'
-    draft.value = '帮我总结最近三本书共同观点'
-    return
-  }
-
-  scope.value = 'current-book'
-  scopedBookId.value = latestBook.id
-  draft.value = `《${latestBook.title}》里最值得回看的 3 个观点是什么？`
+  const defaults = buildPersonalQaDefaults(booksStore.items)
+  scope.value = defaults.scope
+  scopedBookId.value = defaults.bookId
+  draft.value = defaults.draft
 }
 
 async function handleAsk() {
@@ -207,23 +195,15 @@ async function deleteSession(sessionId: string) {
   }
 }
 
-function formatSessionTime(value: string) {
-  return new Date(value).toLocaleString()
-}
-
 function handleScopeChange(nextScope: 'all-books' | 'current-book') {
   if (nextScope === 'current-book' && !scopedBookId.value && selectableBooks.value.length > 0) {
     scopedBookId.value = selectableBooks.value[0].id
   }
 }
 
-function renderReferenceHighlight(text: string) {
-  return highlightText(text, latestQuestion.value)
-}
-
 async function scrollConversationToBottom() {
   await nextTick()
-  const element = conversationRef.value
+  const element = conversationRef.value?.$el as HTMLElement | undefined
   if (!element) return
   element.scrollTo({
     top: element.scrollHeight,
@@ -279,43 +259,43 @@ watch(
 
 <template>
   <div class="qa-view">
+    <AppCard class="qa-view__hero">
+      <div>
+        <p class="qa-view__eyebrow">Ask Your Reading Memory</p>
+        <h2>让签签陪你追问自己的读书笔记。</h2>
+        <p>
+          选择全库或单本书范围，签签会先检索相关摘录，再带着引用来源整理回答。每一次追问都能回到原始笔记。
+        </p>
+        <MascotBubble
+          class="qa-view__mascot"
+          :mood="mascotCue.mood"
+          :message="mascotCue.message"
+          :celebrating="mascotCue.celebrating"
+          compact
+        />
+      </div>
+      <div class="qa-view__hero-meta">
+        <span>{{ scope === 'current-book' ? '当前书籍' : '检索范围' }}</span>
+        <strong>{{ scope === 'current-book' ? (currentScopedBook?.title || '待选择') : '全部书籍' }}</strong>
+      </div>
+    </AppCard>
+
     <section class="qa-view__layout">
-      <AppCard class="qa-view__history">
-        <div class="qa-view__history-header">
-          <h3>问答历史</h3>
-          <el-button text @click="qaStore.resetConversation">新对话</el-button>
-        </div>
-        <div v-if="sessions.length" class="qa-view__history-list">
-          <article
-            v-for="session in sessions"
-            :key="session.id"
-            class="qa-view__history-item"
-            :class="{ 'is-active': currentSession?.id === session.id }"
-          >
-            <button type="button" class="qa-view__history-main" @click="restoreSession(session.id)">
-              <div class="qa-view__history-title">
-                <strong>{{ session.title }}</strong>
-                <el-tag v-if="session.pinned" size="small" round effect="plain">置顶</el-tag>
-              </div>
-              <span>{{ session.scope === 'current-book' ? '单本书' : '全库' }} · {{ formatSessionTime(session.updated_at) }}</span>
-            </button>
-            <div class="qa-view__history-actions">
-              <el-button text size="small" @click.stop="qaStore.togglePinSession(session.id)">
-                {{ session.pinned ? '取消置顶' : '置顶' }}
-              </el-button>
-              <el-button text size="small" @click.stop="renameSession(session.id, session.title)">重命名</el-button>
-              <el-button text size="small" type="danger" @click.stop="deleteSession(session.id)">删除</el-button>
-            </div>
-          </article>
-        </div>
-        <p v-else class="qa-view__history-empty">还没有历史会话，问一个问题后会自动保存。</p>
-      </AppCard>
+      <QaHistoryPanel
+        :sessions="sessions"
+        :current-session-id="currentSession?.id"
+        @new-conversation="qaStore.resetConversation"
+        @restore="restoreSession"
+        @toggle-pin="qaStore.togglePinSession"
+        @rename="renameSession"
+        @delete="deleteSession"
+      />
 
       <AppCard class="qa-view__main">
         <div class="qa-view__chips">
-          <el-tag round @click="usePrompt('这本书里关于长期主义提到了什么')">这本书里关于长期主义提到了什么</el-tag>
-          <el-tag round @click="usePrompt('帮我总结最近三本书共同观点')">帮我总结最近三本书共同观点</el-tag>
-          <el-tag round @click="usePrompt('只检索《认知觉醒》，总结其中关于行动系统的内容')">只检索《认知觉醒》</el-tag>
+          <el-tag v-for="prompt in QA_QUICK_PROMPTS" :key="prompt" round @click="usePrompt(prompt)">
+            {{ prompt }}
+          </el-tag>
         </div>
 
         <div v-if="scope === 'current-book'" class="qa-view__scope-tip">
@@ -323,107 +303,31 @@ watch(
           <span>{{ currentScopedBook ? `仅检索《${currentScopedBook.title}》` : '仅检索指定书籍' }}</span>
         </div>
 
-        <div v-if="scope === 'current-book'" class="qa-view__book-picker">
-          <strong>选择书籍</strong>
-          <el-select
-            v-model="scopedBookId"
-            filterable
-            clearable
-            placeholder="选择你要提问的书"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="book in selectableBooks"
-              :key="book.id"
-              :label="book.title"
-              :value="book.id"
-            >
-              <div class="qa-view__book-option">
-                <span>{{ book.title }}</span>
-                <small>{{ book.author || book.category || '未分类' }}</small>
-              </div>
-            </el-option>
-          </el-select>
-          <div v-if="currentBookPrompts.length" class="qa-view__book-prompts">
-            <el-button v-for="prompt in currentBookPrompts" :key="prompt" round @click="usePrompt(prompt)">
-              {{ prompt }}
-            </el-button>
-          </div>
+        <div v-if="scope === 'current-book' && currentBookPrompts.length" class="qa-view__book-prompts">
+          <el-button v-for="prompt in currentBookPrompts" :key="prompt" round @click="usePrompt(prompt)">
+            {{ prompt }}
+          </el-button>
         </div>
 
-        <div class="qa-view__status-panel" :class="`is-${statusTone}`">
-          <div>
-            <strong>{{ status.label }}</strong>
-            <p>{{ status.detail }}</p>
-          </div>
-          <div class="qa-view__status-meta">
-            <el-tag round effect="plain">{{ retrievalMode === 'hybrid' ? '混合检索' : retrievalMode }}</el-tag>
-            <el-tag round effect="plain" :type="generationMode === 'fallback' ? 'warning' : 'success'">
-              {{ generationMode === 'fallback' ? '本地回退' : '模型生成' }}
-            </el-tag>
-          </div>
-        </div>
+        <QaStatusPanel
+          :status="status"
+          :generation-mode="generationMode"
+          :retrieval-mode="retrievalMode"
+          :fallback-reason="fallbackReason"
+          :error-message="errorMessage"
+          :query-rewrite="queryRewrite"
+          :evidence="evidence"
+          @review-by-topic="reviewByTopic"
+        />
 
-        <div v-if="evidence" class="qa-view__evidence-tip" :class="{ 'is-warning': !evidence.sufficient }">
-          <strong>证据充足度</strong>
-          <p>{{ evidence.message }}</p>
-        </div>
-
-        <div v-if="queryRewrite" class="qa-view__rewrite-tip">
-          <strong>检索扩展</strong>
-          <p>系统识别到你在追问 <span>{{ queryRewrite.applied_rules.join('、') }}</span>，所以额外补充了这些概念来扩大召回：</p>
-          <div class="qa-view__rewrite-tags">
-            <el-tag
-              v-for="term in queryRewrite.expansion_terms.slice(0, 8)"
-              :key="term"
-              round
-              effect="plain"
-              type="success"
-              @click="reviewByTopic(term)"
-            >
-              {{ term }}
-            </el-tag>
-          </div>
-        </div>
-
-        <p v-if="fallbackReason" class="qa-view__status-tip qa-view__status-tip--warning">
-          模型暂时不可用，当前已自动切换到回退回答。{{ fallbackReason }}
-        </p>
-        <p v-else-if="errorMessage" class="qa-view__status-tip qa-view__status-tip--warning">
-          {{ errorMessage }}
-        </p>
-
-        <div ref="conversationRef" class="qa-view__conversation">
-          <template v-if="messages.length">
-            <article
-              v-for="(message, index) in messages"
-              :key="`${message.role}-${index}`"
-              class="qa-view__bubble"
-              :class="[
-                message.role === 'user' ? 'is-user' : 'is-assistant',
-                message.role === 'assistant' && !message.content && loading ? 'is-thinking' : '',
-              ]"
-            >
-              <div class="qa-view__bubble-content">
-                <p>{{ message.content || status.detail || '正在结合你的读书笔记整理答案...' }}</p>
-              </div>
-              <div v-if="message.role === 'assistant' && message.references?.length" class="qa-view__bubble-references">
-                <article
-                  v-for="reference in message.references"
-                  :key="reference.book + reference.chapter + reference.note_id"
-                  class="qa-view__inline-reference"
-                >
-                  <strong>{{ reference.book }} · {{ reference.chapter }}</strong>
-                  <p v-html="renderReferenceHighlight(reference.excerpt)" />
-                  <el-button text @click="jumpToNote(reference.book_id, reference.note_id)">跳转原笔记</el-button>
-                </article>
-              </div>
-            </article>
-          </template>
-          <article v-else class="qa-view__bubble is-assistant" v-loading="loading">
-            <p>从你的个人阅读笔记中提问，答案会连同引用来源一起返回。</p>
-          </article>
-        </div>
+        <QaConversation
+          ref="conversationRef"
+          :messages="messages"
+          :loading="loading"
+          :status-detail="status.detail"
+          :highlight-query="latestQuestion"
+          @jump-to-note="jumpToNote"
+        />
 
         <div v-if="latestAssistantMessage" class="qa-view__followups">
           <div class="qa-view__answer-toolbar">
@@ -459,49 +363,101 @@ watch(
           </div>
         </div>
 
-        <div class="qa-view__input">
-          <el-input v-model="draft" type="textarea" :rows="4" placeholder="输入你想围绕读书笔记提的问题" />
-          <div class="qa-view__input-actions">
-            <el-select v-model="scope" placeholder="检索范围" style="width: 180px" @change="handleScopeChange">
-              <el-option label="当前书籍" value="current-book" />
-              <el-option label="全部书籍" value="all-books" />
-            </el-select>
-            <el-button round :disabled="!messages.length || loading" @click="qaStore.regenerateLastAnswer">重新生成</el-button>
-            <el-button round :disabled="!loading" @click="qaStore.stopStreaming">停止生成</el-button>
-            <el-button type="primary" round :loading="loading" @click="handleAsk">发送问题</el-button>
-          </div>
-          <p v-if="stopped" class="qa-view__status-tip">本轮回答已手动停止，你可以继续追问或点击“重新生成”。</p>
-        </div>
+        <QaInputBox
+          v-model:draft="draft"
+          v-model:scope="scope"
+          :loading="loading"
+          :stopped="stopped"
+          :has-messages="messages.length > 0"
+          :book-id="scopedBookId"
+          :books="selectableBooks"
+          @ask="handleAsk"
+          @regenerate="qaStore.regenerateLastAnswer"
+          @stop="qaStore.stopStreaming"
+          @scope-change="handleScopeChange"
+          @book-change="scopedBookId = $event"
+        />
       </AppCard>
 
-      <AppCard class="qa-view__side">
-        <div class="qa-view__side-header">
-          <div>
-            <h3>引用来源</h3>
-            <p>回答中最核心的证据片段会集中展示在这里。</p>
-          </div>
-          <el-tag round effect="plain">{{ latestReferences.length }} 条</el-tag>
-        </div>
-        <div class="qa-view__reference-list">
-          <article
-            v-for="reference in latestReferences"
-            :key="reference.book + reference.chapter + reference.note_id"
-            class="qa-view__reference-card"
-          >
-            <div class="qa-view__reference-head">
-              <strong>{{ reference.book }}</strong>
-              <span>{{ reference.chapter }}</span>
-            </div>
-            <p v-html="renderReferenceHighlight(reference.excerpt)" />
-            <el-button text @click="jumpToNote(reference.book_id, reference.note_id)">跳转原笔记</el-button>
-          </article>
-        </div>
-      </AppCard>
+      <QaReferencePanel
+        :references="latestReferences"
+        :highlight-query="latestQuestion"
+        @jump-to-note="jumpToNote"
+      />
     </section>
   </div>
 </template>
 
 <style scoped lang="scss">
+.qa-view {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.qa-view__hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-end;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 88% 14%, rgba(47, 93, 80, 0.2), transparent 28%),
+    linear-gradient(135deg, rgba(192, 139, 92, 0.13), rgba(255, 253, 249, 0.96) 62%),
+    var(--bg-card);
+}
+
+.qa-view__eyebrow {
+  margin: 0 0 10px;
+  color: var(--brand-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.qa-view__hero h2 {
+  max-width: 50rem;
+  margin: 0 0 10px;
+  font-size: clamp(1.6rem, 2.4vw, 2.4rem);
+  letter-spacing: -0.04em;
+}
+
+.qa-view__mascot {
+  max-width: 560px;
+  margin-top: 16px;
+}
+
+.qa-view__hero p:last-child {
+  max-width: 48rem;
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.qa-view__hero-meta {
+  min-width: 180px;
+  padding: 16px;
+  border: 1px solid rgba(216, 207, 191, 0.72);
+  border-radius: 22px;
+  background: rgba(255, 253, 249, 0.76);
+  box-shadow: var(--shadow-sm);
+}
+
+.qa-view__hero-meta span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+}
+
+.qa-view__hero-meta strong {
+  color: var(--brand-primary);
+  line-height: 1.45;
+}
+
 .qa-view__layout {
   display: grid;
   grid-template-columns: 280px minmax(0, 1.4fr) 360px;
@@ -509,78 +465,15 @@ watch(
   align-items: stretch;
 }
 
-.qa-view__history,
-.qa-view__main,
-.qa-view__side {
+.qa-view__main {
   min-height: 720px;
   height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-.qa-view__history-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 14px;
-}
-
-.qa-view__history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.qa-view__history-item {
-  border: 1px solid var(--border-light);
-  border-radius: 14px;
-  background: rgba(251, 248, 242, 0.72);
-  overflow: hidden;
-}
-
-.qa-view__history-item.is-active {
-  border-color: rgba(47, 93, 80, 0.35);
-  box-shadow: 0 0 0 2px rgba(47, 93, 80, 0.08);
-}
-
-.qa-view__history-main {
-  width: 100%;
-  padding: 14px 14px 8px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-
-.qa-view__history-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.qa-view__history-item strong,
-.qa-view__history-item span,
-.qa-view__history-title {
-  display: block;
-}
-
-.qa-view__history-item span,
-.qa-view__history-empty {
-  margin-top: 6px;
-  color: var(--text-tertiary);
-  font-size: 0.84rem;
-}
-
-.qa-view__history-actions {
-  display: flex;
-  gap: 4px;
-  padding: 0 10px 10px;
-  flex-wrap: wrap;
+  padding: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(251, 248, 242, 0.9)),
+    var(--bg-card);
 }
 
 .qa-view__chips {
@@ -590,137 +483,23 @@ watch(
   margin-bottom: 22px;
 }
 
-.qa-view__book-picker {
-  margin-bottom: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.qa-view__chips :deep(.el-tag) {
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.qa-view__chips :deep(.el-tag:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(57, 45, 31, 0.08);
 }
 
 .qa-view__book-prompts {
+  margin-bottom: 18px;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-}
-
-.qa-view__book-option {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.qa-view__book-option small {
-  color: var(--text-tertiary);
-}
-
-.qa-view__status-panel {
-  margin-bottom: 16px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(47, 93, 80, 0.12);
-  background: rgba(47, 93, 80, 0.05);
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-}
-
-.qa-view__status-panel.is-warning {
-  border-color: rgba(192, 139, 92, 0.24);
-  background: rgba(192, 139, 92, 0.08);
-}
-
-.qa-view__status-panel.is-success {
-  border-color: rgba(47, 93, 80, 0.2);
-  background: rgba(47, 93, 80, 0.08);
-}
-
-.qa-view__status-panel.is-danger {
-  border-color: rgba(190, 76, 60, 0.22);
-  background: rgba(190, 76, 60, 0.08);
-}
-
-.qa-view__status-panel strong {
-  display: block;
-  margin-bottom: 6px;
-}
-
-.qa-view__status-panel p {
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.65;
-}
-
-.qa-view__status-meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.qa-view__rewrite-tip {
-  margin-bottom: 16px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(47, 93, 80, 0.12);
-  background: rgba(47, 93, 80, 0.05);
-}
-
-.qa-view__evidence-tip {
-  margin-bottom: 16px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(47, 93, 80, 0.06);
-  border: 1px solid rgba(47, 93, 80, 0.08);
-}
-
-.qa-view__evidence-tip.is-warning {
-  background: rgba(192, 139, 92, 0.08);
-  border-color: rgba(192, 139, 92, 0.2);
-}
-
-.qa-view__evidence-tip strong {
-  display: block;
-  margin-bottom: 6px;
-}
-
-.qa-view__evidence-tip p {
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.65;
-}
-
-.qa-view__rewrite-tip strong {
-  display: block;
-  margin-bottom: 6px;
-}
-
-.qa-view__rewrite-tip p {
-  margin: 0 0 10px;
-  color: var(--text-secondary);
-  line-height: 1.65;
-}
-
-.qa-view__rewrite-tip span {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.qa-view__rewrite-tags {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.qa-view__conversation {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  flex: 1;
-  min-height: 280px;
-  padding-right: 6px;
-  overflow-y: auto;
-  scroll-behavior: smooth;
 }
 
 .qa-view__scope-tip {
@@ -732,77 +511,6 @@ watch(
   border-radius: 14px;
   background: rgba(47, 93, 80, 0.08);
   color: var(--text-secondary);
-}
-
-.qa-view__bubble {
-  max-width: 90%;
-  padding: 16px 18px;
-  border-radius: 18px;
-  line-height: 1.75;
-}
-
-.qa-view__bubble-content {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.qa-view__bubble.is-user {
-  margin-left: auto;
-  background: var(--brand-primary);
-  color: #fff;
-}
-
-.qa-view__bubble.is-assistant {
-  background: var(--bg-soft);
-}
-
-.qa-view__bubble.is-thinking {
-  color: var(--text-secondary);
-  border: 1px dashed rgba(47, 93, 80, 0.2);
-}
-
-.qa-view__bubble p,
-.qa-view__bubble ol {
-  margin: 0;
-}
-
-.qa-view__bubble p {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.qa-view__bubble-references {
-  margin-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.qa-view__inline-reference {
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.58);
-  border: 1px solid rgba(47, 93, 80, 0.08);
-}
-
-.qa-view__inline-reference p {
-  margin: 8px 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.qa-view__bubble ol {
-  padding-left: 20px;
-}
-
-.qa-view__input {
-  margin-top: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 .qa-view__status-tip {
@@ -879,91 +587,27 @@ watch(
   gap: 10px;
 }
 
-.qa-view__input-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.qa-view__reference-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.qa-view__side-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-  margin-bottom: 14px;
-}
-
-.qa-view__side-header h3 {
-  margin: 0 0 4px;
-}
-
-.qa-view__side-header p {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: 0.84rem;
-  line-height: 1.6;
-}
-
-.qa-view__reference-card {
-  padding: 14px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm);
-  background: rgba(251, 248, 242, 0.7);
-}
-
-.qa-view__reference-head {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.qa-view__reference-head span {
-  color: var(--text-tertiary);
-  font-size: 0.84rem;
-}
-
-.qa-view__reference-card p {
-  margin: 8px 0 10px;
-  color: var(--text-secondary);
-  line-height: 1.75;
-  display: -webkit-box;
-  -webkit-line-clamp: 5;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-:deep(mark) {
-  padding: 0 2px;
-  border-radius: 4px;
-  background: rgba(192, 139, 92, 0.22);
-}
-
 @media (max-width: 1180px) {
   .qa-view__layout {
     grid-template-columns: 1fr;
   }
 
-  .qa-view__history,
-  .qa-view__main,
-  .qa-view__side {
+  .qa-view__main {
     min-height: auto;
     height: auto;
   }
 }
 
 @media (max-width: 768px) {
-  .qa-view__input-actions {
+  .qa-view__hero {
+    align-items: flex-start;
     flex-direction: column;
+    padding: 22px;
+  }
+
+  .qa-view__hero-meta {
+    width: 100%;
   }
 }
+
 </style>

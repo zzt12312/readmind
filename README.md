@@ -1,53 +1,32 @@
 # ReadMind
 
-面向 `Obsidian + 微信读书` 工作流的 AI 阅读笔记整理与复习系统。
+面向 `Obsidian + 微信读书` 工作流的 AI 阅读笔记整理、问答、洞察与复习系统。
 
-`ReadMind` 试图解决一个很真实的问题：读了很多、划了很多、记了很多，但后续几乎不会系统整理，也很难把过去的笔记重新利用起来。这个项目把本地 Markdown 笔记接入进来，再通过结构化解析、智能检索、AI 总结、可溯源问答和复习机制，把分散书摘变成可搜索、可追问、可回顾的个人知识库。
+ReadMind 试图解决一个很常见的问题：读了很多书、划了很多线、写了很多摘录，但后续很少再系统整理，也很难把过去的笔记重新用起来。这个项目把本地 Markdown 阅读笔记接入进来，通过结构化解析、混合检索、AI 总结、可溯源问答、主题图谱、数据看板和复习机制，把分散书摘变成一个可以持续回看的个人知识工作台。
 
 ## 核心能力
 
-- 本地 `Obsidian` 读书笔记接入与 Markdown 结构化解析
-- 书库、书籍详情、笔记工作台、智能问答、复习中心
-- 基于个人阅读笔记的 AI 摘要、AI 洞察、流式问答
-- 支持单本书问答、全库问答、引用来源展示与跳转原笔记
-- 支持关键词 + 混合检索、搜索高亮、主题图谱、复习卡片
-- 支持异步任务体系：书籍摘要、AI 洞察、图谱分析、书库同步
+- 本地 `Obsidian` 读书笔记同步与微信读书 Markdown 解析
+- 书库、书籍详情、笔记工作台、智能问答、复习中心、知识图谱、数据看板
+- 基于个人阅读笔记的 AI 摘要、AI 洞察、流式问答与引用来源回溯
+- 支持单本书问答、全库问答、搜索高亮、主题筛选、章节筛选和跳转原笔记
+- 支持阅读偏好、阅读时长排行、主题雷达图、阅读热力图、高价值书籍矩阵等数据洞察
+- 支持复习目标、自定义每日卡片数、到期/薄弱/新卡片队列和评分反馈
+- 支持异步任务体系：书籍摘要、AI 洞察、图谱分析、书库同步、任务轮询和失败重试
+- 内置小书签精灵“签签”，在导入、问答、洞察、复习等关键节点提供温柔反馈
 
 ## 技术栈
 
-- 前端：`Vue 3` + `TypeScript` + `Vite` + `Element Plus` + `Pinia` + `Vue Router`
+- 前端：`Vue 3` + `TypeScript` + `Vite` + `Element Plus` + `Pinia` + `Vue Router` + `ECharts`
 - 后端：`Flask` + `Python`
 - AI：`DeepSeek`
 - 检索与缓存：`SQLite` + 本地 embedding 缓存
 - 数据来源：本地 `Obsidian Vault` 中的微信读书 Markdown 笔记
 
-## 当前运行模式
+## 运行模式
 
-- 本地真实模式：读取你在 `.env` 中配置的 `VAULT_ROOT`，并在需要时调用 `DeepSeek`
-- 公开演示模式：`DEMO_DATA_ONLY=1`，使用预置缓存数据，不调用外部模型
-
-## 首次启动检查清单
-
-第一次运行前，建议先确认下面几项：
-
-1. `Node.js` 版本满足当前 Vite 需求，`npm run dev` 能正常启动
-2. `Python 3`、虚拟环境和 `pip install -r requirements.txt` 已完成
-3. `backend/.env` 已配置，尤其是：
-   - `VAULT_ROOT`
-   - `DEEPSEEK_API_KEY`
-   - `DEEPSEEK_BASE_URL`
-   - `DEEPSEEK_MODEL`
-4. `VAULT_ROOT` 指向你自己的 Obsidian 阅读目录，而不是作者机器上的示例路径
-5. 先启动后端，再启动前端；如果 `5173` 被占用，请以前端终端输出端口为准
-6. 如果你只是想先体验界面，可以将 `DEMO_DATA_ONLY=1` 写入 `.env`，使用演示数据模式启动
-
-## 项目亮点
-
-- 不是 AI 套壳 demo，而是围绕真实阅读场景构建的完整产品闭环
-- 打通了“导入 -> 解析 -> 检索 -> 总结 -> 问答 -> 复习”整条链路
-- AI 输出和个人笔记资产强绑定，支持引用来源与原笔记跳转
-- 前端页面信息密度高，包含复杂筛选、状态管理、流式输出和多面板联动
-- 后端实现了统一异步任务体系，支持任务中心、状态轮询和失败重试
+- 本地真实模式：读取 `.env` 中配置的 `VAULT_ROOT`，并在需要时调用 `DeepSeek`
+- 公开演示模式：设置 `DEMO_DATA_ONLY=1`，使用预置缓存数据，不读取真实 Vault，也不调用外部模型
 
 ## 界面预览
 
@@ -55,94 +34,65 @@
 
 ![ReadMind Dashboard](docs/screenshots/dashboard.png)
 
-首页展示阅读空间概览、核心指标、最近整理的书和活跃主题，适合快速进入复习与整理流程。
+首页展示今日阅读回顾、行动队列、阅读指标、最近整理书籍和签签的温柔提醒，适合快速进入复习、整理或问答流程。
+
+### 数据看板
+
+![ReadMind Analytics](docs/screenshots/analytics.png)
+
+数据看板展示阅读时长排行、偏好主题、长期阅读节奏、阅读热力图和高价值书籍矩阵，让用户能看到自己的阅读积累正在形成结构。
 
 ### 书库与封面视图
 
 ![ReadMind Books](docs/screenshots/books.png)
 
-书库页重点展示真实书籍封面、标签和笔记规模，支持按关键词和分类快速浏览。
+书库页展示真实书籍封面、作者、分类、标签和笔记规模，支持按关键词和分类快速浏览。
 
 ### 书籍详情与 AI 摘要
 
 ![ReadMind Book Detail](docs/screenshots/book-detail.png)
 
-书籍详情页展示封面、元信息、AI 总结、读书笔记和本书高亮，是“单本书整理”的核心页面。
+书籍详情页展示封面、元信息、AI 总结、章节笔记、高频主题和摘要生成状态，是单本书整理的核心页面。
 
 ### 笔记工作台
 
 ![ReadMind Notes](docs/screenshots/notes.png)
 
-笔记工作台支持按书籍、标签、章节和排序浏览真实笔记内容，是做二次整理、筛选和 AI 洞察的主操作区。
+笔记工作台支持按书籍、标签、章节、分类、关键词和排序浏览真实笔记内容，并在右侧生成当前筛选范围的 AI 洞察。
 
 ### 智能问答
 
 ![ReadMind QA](docs/screenshots/qa.png)
 
-问答页支持单本书/全库问答、连续对话、状态提示、流式回答和引用来源联动。
+智能问答由“签签”作为回答人格，支持单本书/全库问答、连续追问、检索状态提示、结构化回答和引用来源联动。
 
 ### 复习中心
 
 ![ReadMind Review](docs/screenshots/review.png)
 
-复习中心围绕卡片回顾、掌握度反馈和跳转原笔记，形成长期知识回看闭环。
+复习中心支持每日目标、自定义卡片数、到期/薄弱/新卡片队列、评分反馈、复习完成反馈和跳转原笔记。
 
-## 目录结构
+### 知识图谱
 
-```text
-readmind/
-├── frontend/                # Vue3 前端
-│   ├── src/
-│   │   ├── api/             # 接口请求层
-│   │   ├── components/      # 通用组件与图谱组件
-│   │   ├── layouts/         # 主布局与认证布局
-│   │   ├── router/          # 路由配置
-│   │   ├── stores/          # Pinia 状态管理
-│   │   ├── styles/          # 主题、动效、样式变量
-│   │   ├── types/           # 类型定义
-│   │   └── views/           # 页面视图
-│   └── package.json
-├── backend/                 # Flask 后端
-│   ├── app/
-│   │   ├── routes/          # 路由：books / notes / qa / review / jobs ...
-│   │   ├── services/        # 解析、检索、图谱、异步任务、LLM 等服务
-│   │   ├── config.py
-│   │   └── __init__.py
-│   ├── .env.example
-│   ├── requirements.txt
-│   └── run.py
-├── DEMO_SITE_GUIDE.md       # 演示站使用说明
-└── docs/                    # 项目截图等公开展示资源
-```
+![ReadMind Graph](docs/screenshots/graph.png)
 
-## 当前已完成模块
+知识图谱支持领域聚类和知识主题两种视角，展示主题簇、主题关系图、关联书籍和代表性摘录。
 
-- 真实 Obsidian 书库接入与本地同步
-- 书库页、书籍详情页、首页书架
-- 笔记工作台：按书籍 / 标签 / 章节 / 分类 / 关键词检索
-- AI 洞察：基于当前筛选范围生成结构化总结
-- 智能问答：连续对话、流式输出、书籍范围限制、引用跳转
-- 复习中心：卡片复习、评分反馈、服务端持久化复习进度
-- 主题图谱 / 主题聚类
-- 异步任务中心与失败任务重试
-- LLM / embedding 状态检测
+### 导入中心
+
+![ReadMind Import](docs/screenshots/import.png)
+
+导入中心负责同步本地 Obsidian 阅读目录，并展示同步状态、目录检测、演示模式提示和下一步行动建议。
+
+### 任务中心
+
+![ReadMind Jobs](docs/screenshots/jobs.png)
+
+任务中心统一展示书籍摘要、AI 洞察、本地同步、图谱分析等后台任务，支持状态筛选、类型筛选、进度查看和失败重试。
 
 ## 快速启动
 
-### 1. 启动前端
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-默认地址：
-
-- `http://127.0.0.1:5173`
-- 如果 `5173` 被占用，Vite 会自动切到 `5174` 或下一个可用端口
-
-### 2. 启动后端
+### 1. 启动后端
 
 ```bash
 cd backend
@@ -157,6 +107,28 @@ python run.py
 
 - `http://127.0.0.1:5000`
 
+### 2. 启动前端
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+默认地址：
+
+- `http://127.0.0.1:5173`
+- 如果 `5173` 被占用，Vite 会自动切到 `5174` 或下一个可用端口
+
+## 首次启动检查清单
+
+1. `Node.js` 版本满足当前 Vite 需求，`npm run dev` 能正常启动
+2. `Python 3`、虚拟环境和 `pip install -r requirements.txt` 已完成
+3. `backend/.env` 已配置，尤其是 `VAULT_ROOT` 和 `DEEPSEEK_API_KEY`
+4. `VAULT_ROOT` 指向你自己的 Obsidian 阅读目录，而不是作者机器上的示例路径
+5. 先启动后端，再启动前端；前端开发环境会把 `/api` 代理到 Flask
+6. 如果你只是想体验界面，可以将 `DEMO_DATA_ONLY=1` 写入 `.env`，使用演示数据模式启动
+
 ## 环境变量
 
 后端 `.env` 参考：
@@ -166,9 +138,57 @@ SECRET_KEY=readmind-dev-secret
 DEEPSEEK_API_KEY=replace_with_your_deepseek_key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
+EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 VAULT_ROOT=/path/to/your/Obsidian/Vault/书籍阅读
 DEMO_DATA_ONLY=0
 ```
+
+## 目录结构
+
+```text
+readmind/
+├── frontend/                # Vue3 前端
+│   ├── src/
+│   │   ├── api/             # 接口请求层
+│   │   ├── assets/          # 签签插画等静态资源
+│   │   ├── components/      # 通用组件、问答组件、笔记组件、图谱组件
+│   │   ├── composables/     # 轮询等组合式逻辑
+│   │   ├── constants/       # 路由、问答预设、签签文案
+│   │   ├── layouts/         # 主布局与认证布局
+│   │   ├── router/          # 路由配置
+│   │   ├── stores/          # Pinia 状态管理
+│   │   ├── styles/          # 主题、动效、样式变量
+│   │   ├── types/           # 类型定义
+│   │   └── views/           # 页面视图
+│   └── package.json
+├── backend/                 # Flask 后端
+│   ├── app/
+│   │   ├── routes/          # dashboard / analytics / books / notes / qa / review / jobs ...
+│   │   ├── services/        # 解析、检索、图谱、异步任务、LLM、复习等服务
+│   │   ├── config.py
+│   │   └── __init__.py
+│   ├── tests/               # 后端测试
+│   ├── .env.example
+│   ├── requirements.txt
+│   └── run.py
+├── docs/                    # API、学习路线与截图
+├── private/                 # 私有规划与评审文档，不建议对外发布敏感内容
+└── DEMO_SITE_GUIDE.md       # 演示站使用说明
+```
+
+## 当前已完成模块
+
+- 真实 Obsidian 书库接入与本地同步
+- 书库页、书籍详情页、首页书架与行动队列
+- 数据看板：阅读排行、偏好主题、热力图、雷达图、高价值书籍矩阵
+- 笔记工作台：按书籍 / 标签 / 章节 / 分类 / 关键词检索
+- AI 洞察：基于当前筛选范围生成结构化总结、复习问题和引用依据
+- 智能问答：连续对话、流式输出、书籍范围限制、引用跳转
+- 复习中心：卡片复习、评分反馈、队列筛选、自定义目标、服务端持久化进度
+- 主题图谱：领域聚类、知识主题、主题关系图、关联书籍与摘录
+- 异步任务中心：任务列表、状态筛选、失败任务重试
+- LLM / embedding 状态检测与自动 embedding 预热
+- 小书签精灵“签签”：正式插画、状态动画、统一文案系统和关键节点反馈
 
 ## 隐私与数据边界
 
@@ -177,40 +197,51 @@ DEMO_DATA_ONLY=0
 - 当你主动触发摘要、AI 洞察或智能问答时，系统只会将当前命中的摘录片段发送给 `DeepSeek`
 - 如果你不希望任何内容离开本机，可以启用 `DEMO_DATA_ONLY=1` 或关闭模型调用链路
 
+## 当前能力边界
+
+- 真实模式下，导入中心以“同步本地 Obsidian 目录”为主；直接上传 Markdown/zip 仍是演示模式交互
+- 异步任务使用本地线程池和 SQLite 记录状态，适合个人本地运行；如果要做多人生产服务，建议替换为 Celery/RQ 等队列
+- 复习中心已经具备基础队列和评分反馈，但长期间隔算法仍可继续增强
+- 演示模式使用预置缓存数据，适合公开展示，不适合承载真实多人数据
+
 ## 主要接口
 
 - `GET /api/health`
 - `GET /api/dashboard/overview`
+- `GET /api/analytics/overview`
 - `GET /api/books`
+- `GET /api/books/:id`
 - `GET /api/books/:id/summary`
 - `POST /api/books/:id/summary/regenerate`
 - `GET /api/notes`
 - `POST /api/notes/summarize`
 - `POST /api/qa/stream`
 - `GET /api/review/today`
+- `GET /api/review/scoped`
 - `POST /api/review/rate`
 - `GET /api/insights/topics`
+- `GET /api/import/jobs`
+- `POST /api/import/sync-local`
 - `GET /api/jobs`
+- `POST /api/jobs/:id/retry`
 - `GET /api/llm/health`
+
+更完整的接口说明见 [docs/API.md](docs/API.md)。
 
 ## 推荐阅读顺序
 
 如果你是第一次看这个仓库，建议按下面顺序了解：
 
-1. [DEMO_SITE_GUIDE.md](/Users/taozhang/Desktop/maybe/DEMO_SITE_GUIDE.md:1)
-2. 阅读本 README 中的功能说明与界面预览
-3. 直接访问演示站体验核心流程
+1. [DEMO_SITE_GUIDE.md](DEMO_SITE_GUIDE.md)
+2. [docs/LEARNING_PATH.md](docs/LEARNING_PATH.md)
+3. [docs/API.md](docs/API.md)
+4. 阅读本 README 中的功能说明与界面预览
+5. 直接运行演示模式体验核心流程
 
-## 当前状态
+## 适合对外介绍的一句话
 
-这个仓库已经不是单纯的原型设计文档，而是一个可运行、可演示、可继续迭代的全栈项目。  
-目前最值得继续优化的方向主要集中在：
-
-- AI 链路稳定性与状态体验
-- 检索质量进一步增强
-- 复习系统长期调度
-- 异步任务体系继续完善
+ReadMind 是一个面向长期阅读者的本地优先 AI 阅读工作台，它把 Obsidian 中沉睡的微信读书摘录重新组织成可检索、可追问、可复习、可洞察的个人知识系统。
 
 ## License
 
-当前仓库默认仅作个人学习、求职展示和项目迭代使用。
+当前仓库默认仅作个人学习、求职展示和项目迭代使用。若准备正式开源给他人使用，建议补充明确的 `LICENSE` 文件。

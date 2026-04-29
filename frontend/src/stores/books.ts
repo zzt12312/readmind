@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { fetchBookDetail, fetchBookList, fetchBookSummary, regenerateBookSummary } from '@/api/modules/books'
-import { fetchJobDetail } from '@/api/modules/jobs'
 import type { BookItem } from '@/types/book'
+import { pollAsyncJob } from '@/utils/jobPolling'
 
 export const useBooksStore = defineStore('books', {
   state: () => ({
@@ -105,14 +105,15 @@ export const useBooksStore = defineStore('books', {
       }
     },
     async pollSummaryJob(jobId: string, bookId: number) {
-      // 轮询只负责等待结果，不阻塞页面其余内容；一旦任务成功，就把摘要写入当前视图和本地缓存。
-      for (let index = 0; index < 40; index += 1) {
-        const job = await fetchJobDetail(jobId)
-        this.summaryJobId = job.id
-        this.summaryJobStatus = job.status
-        this.summaryJobMessage = job.message || ''
-
-        if (job.status === 'success') {
+      await pollAsyncJob(jobId, {
+        maxAttempts: 40,
+        intervalMs: 1500,
+        onProgress: (job) => {
+          this.summaryJobId = job.id
+          this.summaryJobStatus = job.status
+          this.summaryJobMessage = job.message || ''
+        },
+        onSuccess: (job) => {
           const summary = job.result?.summary || ''
           if (summary) {
             this.summaryCache[bookId] = summary
@@ -120,16 +121,14 @@ export const useBooksStore = defineStore('books', {
               this.currentSummary = summary
             }
           }
-          return
-        }
-
-        if (job.status === 'failed') {
-          throw new Error(job.error_message || '摘要生成失败')
-        }
-
-        await new Promise((resolve) => window.setTimeout(resolve, 1500))
-      }
-      this.summaryJobMessage = '摘要仍在生成中，请稍后刷新查看'
+        },
+        onFailed: (job) => {
+          this.summaryJobMessage = job.error_message || '摘要生成失败'
+        },
+        onTimeout: () => {
+          this.summaryJobMessage = '摘要仍在生成中，请稍后刷新查看'
+        },
+      })
     },
     findById(id: number) {
       return this.items.find((item) => item.id === id) ?? null

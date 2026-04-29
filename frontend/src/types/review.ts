@@ -20,16 +20,46 @@ export interface ReviewCard {
 export interface ReviewScope {
   tag: string
   book_id: number | null
+  queue: ReviewQueue
+}
+
+export type ReviewQueue = 'due' | 'weak' | 'new'
+
+export interface ReviewPlan {
+  default_daily_goal: number
+  selected_daily_goal: number
+  daily_goal_options: number[]
+  suggested_today: number
+  due_count: number
+  batch_size: number
+  message: string
+}
+
+export type ReviewLevel = 'low' | 'medium' | 'high'
+
+export interface ReviewLevelGuidance {
+  level: ReviewLevel
+  label: string
+  hint: string
+}
+
+export interface ReviewQueueOption {
+  value: ReviewQueue
+  label: string
+  description: string
+  count: number
 }
 
 export interface ReviewTodayResponse {
   summary: ReviewSummaryItem[]
+  plan: ReviewPlan
+  level_guidance: ReviewLevelGuidance[]
+  queue_options: ReviewQueueOption[]
   card: ReviewCard
   cards: ReviewCard[]
+  weak_cards: ReviewCard[]
   scope: ReviewScope
 }
-
-export type ReviewLevel = 'low' | 'medium' | 'high'
 
 export interface ReviewProgress {
   note_id: number

@@ -24,5 +24,7 @@ defineEmits<{
 .topic-graph-chart {
   width: 100%;
   height: 600px;
+  position: relative;
+  z-index: 1;
 }
 </style>
