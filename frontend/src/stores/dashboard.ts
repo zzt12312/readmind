@@ -68,10 +68,10 @@ export const useDashboardStore = defineStore('dashboard', {
         this.recentBooks = data.recent_books
         this.activeTopics = data.active_topics
         this.reviewSummary = data.review_summary
-        this.activationReport = data.activation_report
-        this.dailyBrief = data.daily_brief
-        this.actionQueue = data.action_queue
-        this.recommendedReview = data.recommended_review
+        this.activationReport = data.activation_report ?? this.activationReport
+        this.dailyBrief = data.daily_brief ?? this.dailyBrief
+        this.actionQueue = data.action_queue ?? []
+        this.recommendedReview = data.recommended_review ?? this.recommendedReview
       } finally {
         this.loading = false
       }

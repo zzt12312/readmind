@@ -56,7 +56,7 @@ export const useAnalyticsStore = defineStore('analytics', {
         this.authorCloud = data.author_cloud
         this.activityHeatmap = data.activity_heatmap
         this.longTermMetrics = data.long_term_metrics
-        this.recommendations = data.recommendations
+        this.recommendations = data.recommendations ?? []
       } finally {
         this.loading = false
       }

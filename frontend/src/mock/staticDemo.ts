@@ -504,6 +504,30 @@ function buildDashboard() {
       streak_days: 2,
       mastery_rate: '58%',
     },
+    activation_report: {
+      title: '演示书库已经整理完成',
+      summary: '当前演示缓存包含书籍、笔记、主题、复习卡片和预生成问答结果，可以直接体验从浏览到追问再到复习的完整闭环。',
+      asset_cards: [
+        { label: '可浏览书籍', value: `${demoBooks.length} 本`, hint: '覆盖历史、心理、商业、经济等方向' },
+        { label: '结构化笔记', value: `${demoNotes.length} 条`, hint: '已提取章节、标签和原文摘录' },
+        { label: '可复习卡片', value: `${reviewCards.length} 张`, hint: '适合快速体验评分反馈' },
+      ],
+      top_topics: ['长期主义', '制度', '组织', '判断力', '复利'],
+      recent_books: demoBooks.slice(0, 4).map((book) => book.title),
+      recommended_questions: [
+        '这些书里如何理解长期主义？',
+        '《南明史》和《置身事内》有哪些共同主题？',
+        '哪些笔记适合加入今天的复习？',
+      ],
+      primary_action: {
+        label: '开始 5 分钟回看',
+        path: '/review',
+      },
+      secondary_action: {
+        label: '问自己的笔记',
+        path: '/qa',
+      },
+    },
     daily_brief: {
       title: '今天可以从一小组复习开始',
       summary: '演示数据已经准备好。你可以先看笔记工作台，再问签签一个关于长期主义或制度的问题。',
@@ -619,6 +643,32 @@ function buildAnalytics() {
       { label: '持续复习', value: '2 天', score: 54, hint: '已经开始形成回看节奏' },
       { label: '跨书连接', value: '12 个主题', score: 78, hint: '历史、经济、心理之间有明显关联' },
       { label: '整理完成度', value: '高', score: 82, hint: '笔记已经可以被检索和问答复用' },
+    ],
+    recommendations: [
+      {
+        type: 'review',
+        title: '先完成一小组复习',
+        reason: '演示数据里有 6 张今日到期卡片，能快速体验从回想到评分的完整流程。',
+        action_label: '去复习',
+        path: '/review',
+        priority: 'high',
+      },
+      {
+        type: 'topic',
+        title: '查看制度与组织主题',
+        reason: '《南明史》和《置身事内》围绕制度、组织、激励形成了清晰的跨书连接。',
+        action_label: '看图谱',
+        path: '/graph',
+        priority: 'medium',
+      },
+      {
+        type: 'book',
+        title: '回看《南明史》',
+        reason: '这本书笔记密度最高，适合作为公开演示里的重点样例。',
+        action_label: '查看书籍',
+        path: '/books/3',
+        priority: 'medium',
+      },
     ],
   }
 }
