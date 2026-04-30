@@ -89,6 +89,15 @@ export interface LongTermMetric {
   hint: string
 }
 
+export interface AnalyticsRecommendation {
+  type: 'book' | 'topic' | 'review' | 'coverage'
+  title: string
+  reason: string
+  action_label: string
+  path: string
+  priority: 'high' | 'medium' | 'low'
+}
+
 export interface AnalyticsOverview {
   metrics: AnalyticsMetric[]
   category_preferences: CategoryPreference[]
@@ -102,4 +111,5 @@ export interface AnalyticsOverview {
   author_cloud: AuthorCloudItem[]
   activity_heatmap: ActivityHeatmapItem[]
   long_term_metrics: LongTermMetric[]
+  recommendations: AnalyticsRecommendation[]
 }

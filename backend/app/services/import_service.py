@@ -95,6 +95,7 @@ def normalize_job_status(status: str) -> str:
 def build_import_meta(config: dict[str, Any]) -> dict[str, Any]:
     demo_mode = bool(config.get("DEMO_DATA_ONLY", False))
     vault_health = scan_vault_health(config)
+    export_root = Path(config.get("EXPORT_ROOT", "exports")).expanduser()
     return {
         "demo_mode": demo_mode,
         "source_label": "演示数据集（已预置真实阅读缓存）" if demo_mode else "本地 Obsidian 书籍阅读目录",
@@ -103,6 +104,7 @@ def build_import_meta(config: dict[str, Any]) -> dict[str, Any]:
             if demo_mode
             else "系统会重新扫描本地 Obsidian 阅读目录，并更新书库缓存。"
         ),
+        "export_root": str(export_root / "qa"),
         **vault_health,
     }
 

@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
-import { summarizeFilteredNotes } from '@/api/modules/notes-summary'
+import { exportNoteInsight, summarizeFilteredNotes } from '@/api/modules/notes-summary'
 import AppCard from '@/components/base/AppCard.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
 import NoteCard from '@/components/notes/NoteCard.vue'
@@ -370,6 +370,33 @@ async function refreshInsight() {
   }
 }
 
+async function exportCurrentInsight() {
+  if (!hasGeneratedInsight.value) {
+    ElMessage.info('先生成 AI 洞察，再导出 Markdown。')
+    return
+  }
+  try {
+    const result = await exportNoteInsight({
+      title: currentBook.value ? `${currentBook.value.title} - 笔记洞察` : '笔记洞察',
+      scope: {
+        book_id: activeBookId.value ?? undefined,
+        book_title: currentBook.value?.title,
+        q: keyword.value.trim() || undefined,
+        category: selectedCategory.value || undefined,
+        tag: selectedTag.value || undefined,
+        chapter: selectedChapter.value || undefined,
+        sort: selectedSort.value,
+      },
+      summary: insightSummary.value,
+      sections: insightSections.value,
+      references: insightReferences.value,
+    })
+    ElMessage.success(`已导出到 ${result.relative_path}`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '导出洞察失败，请稍后重试')
+  }
+}
+
 async function pollInsightJob(jobId: string) {
   await pollJob(jobId, {
     maxAttempts: 40,
@@ -475,6 +502,7 @@ async function loadMore() {
         :insight-references="insightReferences"
         :insight-job-status="insightJobStatus"
         @refresh="refreshInsight"
+        @export-insight="exportCurrentInsight"
         @review-by-topic="reviewByTopic"
         @jump-to-reference="jumpToInsightReference"
       />
@@ -571,7 +599,7 @@ async function loadMore() {
 
 .note-workbench__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) minmax(390px, 0.42fr);
   gap: 20px;
   align-items: start;
 }

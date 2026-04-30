@@ -20,14 +20,18 @@ def build_analytics_payload(data: dict[str, Any], repository: Any) -> dict[str, 
     category_note_counter = Counter(note.get("category") or "未分类" for note in notes)
     topic_counter = build_topic_counter(notes)
     review_funnel = build_review_funnel(notes, progress_map, review_state["due_count"])
+    reading_time_rank = build_reading_time_rank(books, notes, progress_map)
+    high_value_matrix = build_high_value_matrix(books, notes, progress_map)
+    topic_rank = build_topic_rank(topic_counter)
+    long_term_metrics = build_long_term_metrics(notes, progress_map, review_state, review_logs)
 
     return {
         "metrics": build_metrics(books, notes, progress_map, review_state, category_counter),
         "category_preferences": build_category_preferences(category_counter, category_note_counter),
         "preference_radar": build_preference_radar(category_counter, category_note_counter),
-        "reading_time_rank": build_reading_time_rank(books, notes, progress_map),
-        "high_value_matrix": build_high_value_matrix(books, notes, progress_map),
-        "topic_rank": build_topic_rank(topic_counter),
+        "reading_time_rank": reading_time_rank,
+        "high_value_matrix": high_value_matrix,
+        "topic_rank": topic_rank,
         "review_funnel": review_funnel,
         "review_progress": {
             "due_count": review_state["due_count"],
@@ -39,7 +43,15 @@ def build_analytics_payload(data: dict[str, Any], repository: Any) -> dict[str, 
         "reading_timeline": build_reading_timeline(books),
         "author_cloud": build_author_cloud(books, notes),
         "activity_heatmap": build_activity_heatmap(notes, review_logs),
-        "long_term_metrics": build_long_term_metrics(notes, progress_map, review_state, review_logs),
+        "long_term_metrics": long_term_metrics,
+        "recommendations": build_recommendations(
+            reading_time_rank=reading_time_rank,
+            high_value_matrix=high_value_matrix,
+            topic_rank=topic_rank,
+            review_funnel=review_funnel,
+            review_state=review_state,
+            long_term_metrics=long_term_metrics,
+        ),
     }
 
 
@@ -358,6 +370,110 @@ def build_long_term_metrics(
             "hint": "分数越高代表待巩固压力越低",
         },
     ]
+
+
+def build_recommendations(
+    *,
+    reading_time_rank: list[dict[str, Any]],
+    high_value_matrix: list[dict[str, Any]],
+    topic_rank: list[dict[str, Any]],
+    review_funnel: list[dict[str, Any]],
+    review_state: dict[str, Any],
+    long_term_metrics: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    recommendations: list[dict[str, Any]] = []
+    top_value_book = high_value_matrix[0] if high_value_matrix else None
+    top_topic = topic_rank[0] if topic_rank else None
+    weak_count = next((item["value"] for item in review_funnel if item["label"] == "待巩固"), 0)
+    new_count = next((item["value"] for item in review_funnel if item["label"] == "新卡片"), 0)
+    coverage_metric = next((item for item in long_term_metrics if item["label"] == "复习覆盖"), None)
+
+    if top_value_book:
+        recommendations.append(
+            {
+                "type": "book",
+                "title": f"优先回看《{top_value_book['title']}》",
+                "reason": (
+                    f"它有 {top_value_book['note_count']} 条笔记、"
+                    f"{top_value_book['reviewed_count']} 次复习记录，是当前最值得复盘的高价值书。"
+                ),
+                "action_label": "打开这本书",
+                "path": f"/books/{top_value_book['id']}",
+                "priority": "high",
+            }
+        )
+    elif reading_time_rank:
+        book = reading_time_rank[0]
+        recommendations.append(
+            {
+                "type": "book",
+                "title": f"从《{book['title']}》开始整理",
+                "reason": f"它在阅读时长榜靠前，已经投入 {book['reading_time_minutes']} 分钟，适合作为复盘入口。",
+                "action_label": "打开这本书",
+                "path": f"/books/{book['id']}",
+                "priority": "medium",
+            }
+        )
+
+    if top_topic:
+        recommendations.append(
+            {
+                "type": "topic",
+                "title": f"围绕「{top_topic['topic']}」做一次主题整理",
+                "reason": f"这个主题出现 {top_topic['count']} 次，占当前主题笔记约 {top_topic['share']}%。",
+                "action_label": "追问这个主题",
+                "path": f"/qa?preset=我关于「{top_topic['topic']}」的笔记里，最值得回看的观点是什么？",
+                "priority": "medium",
+            }
+        )
+
+    if weak_count:
+        recommendations.append(
+            {
+                "type": "review",
+                "title": f"先处理 {min(int(weak_count), 10)} 张待巩固卡片",
+                "reason": "这些卡片上次标记为不会或模糊，短时间内再碰一次更容易留下痕迹。",
+                "action_label": "练待巩固",
+                "path": "/review?queue=weak",
+                "priority": "high",
+            }
+        )
+    elif int(review_state.get("due_count") or 0):
+        recommendations.append(
+            {
+                "type": "review",
+                "title": "完成今天的一小组复习",
+                "reason": f"当前有 {review_state['due_count']} 张到期卡片，不用清空，先完成 5 到 10 张就好。",
+                "action_label": "开始复习",
+                "path": "/review",
+                "priority": "medium",
+            }
+        )
+    elif new_count:
+        recommendations.append(
+            {
+                "type": "review",
+                "title": "从新卡片建立第一轮印象",
+                "reason": f"还有 {new_count} 条摘录没有复习记录，适合挑一小组先建立初始记忆。",
+                "action_label": "练新卡片",
+                "path": "/review?queue=new",
+                "priority": "medium",
+            }
+        )
+
+    if coverage_metric and int(coverage_metric.get("score") or 0) < 20:
+        recommendations.append(
+            {
+                "type": "coverage",
+                "title": "复习覆盖率还在早期",
+                "reason": "现在不适合追求完整清空，建议每天只做一小组，让系统逐步摸到你的高价值摘录。",
+                "action_label": "查看复习计划",
+                "path": "/review",
+                "priority": "low",
+            }
+        )
+
+    return recommendations[:4]
 
 
 def parse_reading_time_minutes(value: str) -> int:

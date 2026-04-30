@@ -1,14 +1,17 @@
 import json
+from pathlib import Path
 
-from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
+from flask import Blueprint, Response, current_app, jsonify, request, send_from_directory, stream_with_context
 
 from ..services.llm_client import LLMClientError, create_llm_client
 from ..services.qa_service import (
     SYSTEM_PROMPT,
     build_evidence_summary,
     build_llm_messages,
+    export_qa_session_markdown,
     split_stream_chunks,
 )
+from ..services.qa_deposit_repository import qa_deposit_repository
 from ..services.vault_parser import answer_question, vault_repository
 
 qa_bp = Blueprint("qa", __name__)
@@ -155,3 +158,57 @@ def ask_stream():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@qa_bp.post("/export")
+def export_session():
+    payload = request.get_json(silent=True) or {}
+    messages = payload.get("messages") or []
+    if not isinstance(messages, list) or not messages:
+        return jsonify({"error": {"code": "QA_EXPORT_EMPTY", "message": "没有可导出的问答内容", "detail": ""}}), 400
+
+    result = export_qa_session_markdown(
+        export_root=current_app.config["EXPORT_ROOT"],
+        title=str(payload.get("title") or ""),
+        scope=str(payload.get("scope") or "all-books"),
+        book_title=str(payload.get("book_title") or ""),
+        messages=messages,
+    )
+    return jsonify(
+        {
+            **result,
+            "download_url": f"/api/qa/exports/{result['file_name']}",
+            "message": "问答已导出为 Markdown",
+        }
+    )
+
+
+@qa_bp.get("/exports/<path:file_name>")
+def download_export(file_name: str):
+    if Path(file_name).name != file_name or not file_name.endswith(".md"):
+        return jsonify({"error": {"code": "QA_EXPORT_NOT_FOUND", "message": "导出文件不存在", "detail": ""}}), 404
+    export_dir = Path(current_app.config["EXPORT_ROOT"]).expanduser().resolve() / "qa"
+    return send_from_directory(export_dir, file_name, as_attachment=True)
+
+
+@qa_bp.get("/deposits")
+def list_deposits():
+    deposit_type = request.args.get("type") or None
+    limit = request.args.get("limit", "50")
+    try:
+        normalized_limit = int(limit)
+    except ValueError:
+        normalized_limit = 50
+    return jsonify({"items": qa_deposit_repository.list_deposits(deposit_type, normalized_limit)})
+
+
+@qa_bp.post("/deposits")
+def create_deposit():
+    payload = request.get_json(silent=True) or {}
+    question = str(payload.get("question") or "").strip()
+    content = str(payload.get("content") or "").strip()
+    if not question or not content:
+        return jsonify({"error": {"code": "QA_DEPOSIT_EMPTY", "message": "缺少可沉淀的问题或内容", "detail": ""}}), 400
+
+    item = qa_deposit_repository.create_deposit(payload)
+    return jsonify({"item": item, "message": "问答沉淀已保存"}), 201

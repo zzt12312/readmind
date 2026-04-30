@@ -13,3 +13,10 @@ backend/app/services/__pycache__
 *.pyc
 backend/data/*.db
 private/
+exports/**
+!exports/
+!exports/.gitkeep
+!exports/qa/
+!exports/qa/.gitkeep
+!exports/insights/
+!exports/insights/.gitkeep

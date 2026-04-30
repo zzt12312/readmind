@@ -351,6 +351,10 @@ function jumpToNote(bookId: number, noteId: number) {
   })
 }
 
+function openClusterAction(path: string) {
+  void router.push(path)
+}
+
 onMounted(() => {
   void loadGraph()
 })
@@ -513,6 +517,17 @@ onMounted(() => {
           :title="`主题簇：${selectedCluster.name}`"
           description="这里展示这个主题簇最常一起出现的书和代表性摘录，方便你继续追溯原始上下文。"
         />
+        <div v-if="selectedCluster.actions?.length" class="topic-graph-view__actions">
+          <article
+            v-for="action in selectedCluster.actions"
+            :key="`${selectedCluster.id}-${action.type}`"
+            :class="`is-${action.type}`"
+          >
+            <strong>{{ action.label }}</strong>
+            <p>{{ action.description }}</p>
+            <button type="button" @click="openClusterAction(action.path)">开始</button>
+          </article>
+        </div>
         <div class="topic-graph-view__detail-grid">
           <div class="topic-graph-view__books">
             <h4>相关书籍</h4>
@@ -1019,6 +1034,53 @@ onMounted(() => {
   gap: 16px;
 }
 
+.topic-graph-view__actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.topic-graph-view__actions article {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid rgba(216, 207, 191, 0.68);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 253, 249, 0.9), rgba(248, 242, 232, 0.68)),
+    var(--bg-card);
+}
+
+.topic-graph-view__actions article.is-qa {
+  border-color: rgba(47, 93, 80, 0.18);
+  background:
+    linear-gradient(135deg, rgba(47, 93, 80, 0.08), rgba(255, 253, 249, 0.82)),
+    var(--bg-card);
+}
+
+.topic-graph-view__actions strong {
+  display: block;
+  color: var(--brand-primary);
+}
+
+.topic-graph-view__actions p {
+  min-height: 3.2em;
+  margin: 7px 0 12px;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+.topic-graph-view__actions button {
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand-primary);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 900;
+}
+
 .topic-graph-view__books h4,
 .topic-graph-view__samples h4 {
   margin: 0 0 12px;
@@ -1074,6 +1136,7 @@ onMounted(() => {
 @media (max-width: 1180px) {
   .topic-graph-view__layout,
   .topic-graph-view__detail-grid,
+  .topic-graph-view__actions,
   .topic-graph-view__control-grid {
     grid-template-columns: 1fr;
   }

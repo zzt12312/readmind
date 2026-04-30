@@ -96,6 +96,10 @@ def test_build_analytics_payload_aggregates_reading_and_review_metrics() -> None
         {"label": "今日到期", "value": 2, "hint": "今天应该回看"},
         {"label": "已掌握", "value": 1, "hint": "掌握度达到阈值"},
     ]
+    assert payload["recommendations"][0]["type"] == "book"
+    assert payload["recommendations"][0]["path"] == "/books/1"
+    assert any(item["type"] == "topic" for item in payload["recommendations"])
+    assert any(item["path"] == "/review?queue=weak" for item in payload["recommendations"])
 
 
 def test_reading_time_rank_keeps_more_than_ten_books() -> None:

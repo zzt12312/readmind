@@ -3,10 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from .llm_client import LLMClientError, create_llm_client
 from .payloads.notes import build_notes_payload
+from .qa_service import sanitize_export_title, unique_export_path
 from .vault_parser import format_qa_context, vault_repository
 
 
@@ -134,3 +137,106 @@ def generate_notes_insight_sync(config: Any, payload: dict[str, Any]) -> dict[st
         summary = fallback
 
     return {"summary": summary, "references": references[:3], "sections": sections}
+
+
+def export_note_insight_markdown(
+    *,
+    export_root: str | Path,
+    title: str,
+    scope: dict[str, Any],
+    summary: str,
+    sections: dict[str, Any] | None,
+    references: list[dict[str, Any]],
+) -> dict[str, str]:
+    insights_dir = Path(export_root).expanduser().resolve() / "insights"
+    insights_dir.mkdir(parents=True, exist_ok=True)
+    now = datetime.now()
+    safe_title = sanitize_export_title(title or build_scope_title(scope) or "笔记洞察")
+    target = unique_export_path(insights_dir / f"{now:%Y-%m-%d-%H%M%S}-{safe_title}.md")
+    target.write_text(
+        render_note_insight_markdown(
+            title=title or "笔记洞察",
+            scope=scope,
+            summary=summary,
+            sections=sections,
+            references=references,
+            exported_at=now,
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "file_name": target.name,
+        "relative_path": str(Path("exports") / "insights" / target.name),
+        "absolute_path": str(target),
+    }
+
+
+def render_note_insight_markdown(
+    *,
+    title: str,
+    scope: dict[str, Any],
+    summary: str,
+    sections: dict[str, Any] | None,
+    references: list[dict[str, Any]],
+    exported_at: datetime,
+) -> str:
+    sections = sections or {}
+    lines = [
+        f"# {title}",
+        "",
+        f"- 导出时间：{exported_at:%Y-%m-%d %H:%M:%S}",
+        f"- 筛选范围：{build_scope_title(scope) or '当前笔记范围'}",
+        "",
+        "## 核心结论",
+        "",
+        summary or str(sections.get("core_conclusion") or "暂无总结"),
+        "",
+    ]
+
+    if sections.get("reasoning"):
+        lines.extend(["## 为什么值得关注", "", str(sections["reasoning"]), ""])
+
+    key_themes = [str(item) for item in sections.get("key_themes", []) if str(item).strip()]
+    if key_themes:
+        lines.extend(["## 关联主题", ""])
+        lines.extend([f"- {theme}" for theme in key_themes])
+        lines.append("")
+
+    review_questions = [str(item) for item in sections.get("review_questions", []) if str(item).strip()]
+    if review_questions:
+        lines.extend(["## 值得复习的问题", ""])
+        lines.extend([f"- {question}" for question in review_questions])
+        lines.append("")
+
+    action_suggestions = [str(item) for item in sections.get("action_suggestions", []) if str(item).strip()]
+    if action_suggestions:
+        lines.extend(["## 可执行建议", ""])
+        lines.extend([f"- {suggestion}" for suggestion in action_suggestions])
+        lines.append("")
+
+    if references:
+        lines.extend(["## 引用依据", ""])
+        for index, reference in enumerate(references, start=1):
+            book = str(reference.get("book") or "未知书籍")
+            chapter = str(reference.get("chapter") or "未知章节")
+            excerpt = str(reference.get("excerpt") or "").strip()
+            lines.extend([f"{index}. **{book} · {chapter}**", "", f"   > {excerpt}", ""])
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def build_scope_title(scope: dict[str, Any]) -> str:
+    parts = []
+    if scope.get("book_title"):
+        parts.append(f"书籍：{scope['book_title']}")
+    elif scope.get("book_id"):
+        parts.append(f"书籍 ID：{scope['book_id']}")
+    if scope.get("q"):
+        parts.append(f"关键词：{scope['q']}")
+    if scope.get("category"):
+        parts.append(f"分类：{scope['category']}")
+    if scope.get("tag"):
+        parts.append(f"标签：{scope['tag']}")
+    if scope.get("chapter"):
+        parts.append(f"章节：{scope['chapter']}")
+    return "；".join(parts)

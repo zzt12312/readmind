@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { fetchAnalyticsOverview } from '@/api/modules/analytics'
 import type {
   AnalyticsMetric,
+  AnalyticsRecommendation,
   AnalyticsReviewProgress,
   ActivityHeatmapItem,
   AuthorCloudItem,
@@ -35,6 +36,7 @@ export const useAnalyticsStore = defineStore('analytics', {
     authorCloud: [] as AuthorCloudItem[],
     activityHeatmap: [] as ActivityHeatmapItem[],
     longTermMetrics: [] as LongTermMetric[],
+    recommendations: [] as AnalyticsRecommendation[],
     loading: false,
   }),
   actions: {
@@ -54,6 +56,7 @@ export const useAnalyticsStore = defineStore('analytics', {
         this.authorCloud = data.author_cloud
         this.activityHeatmap = data.activity_heatmap
         this.longTermMetrics = data.long_term_metrics
+        this.recommendations = data.recommendations
       } finally {
         this.loading = false
       }

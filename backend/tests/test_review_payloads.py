@@ -73,6 +73,9 @@ def test_review_payload_splits_due_weak_and_new_queues() -> None:
     assert {card["note_id"] for card in due_payload["cards"]} == {1, 2, 3}
     assert [card["note_id"] for card in weak_payload["cards"]] == [1, 4]
     assert [card["note_id"] for card in new_payload["cards"]] == [2]
+    assert new_payload["cards"][0]["reason"]["label"] == "新卡片"
+    assert weak_payload["cards"][0]["reason"]["label"] == "上次没想起来"
+    assert any(card["reason"]["label"] == "按计划到期" for card in due_payload["cards"])
 
 
 def test_review_daily_goal_accepts_custom_values() -> None:

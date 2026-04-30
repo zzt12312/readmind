@@ -22,6 +22,7 @@ const {
   authorCloud,
   activityHeatmap,
   longTermMetrics,
+  recommendations,
   loading,
 } = storeToRefs(analyticsStore)
 
@@ -80,6 +81,10 @@ const radarAxisPoints = computed(() => {
 function clampMatrixPosition(value: number) {
   return Math.min(90, Math.max(10, value))
 }
+
+function openRecommendation(path: string) {
+  void router.push(path)
+}
 </script>
 
 <template>
@@ -108,6 +113,30 @@ function clampMatrixPosition(value: number) {
         :hint="metric.hint"
       />
     </section>
+
+    <AppCard v-if="recommendations.length" class="analytics-view__recommendations">
+      <div class="analytics-view__recommendations-head">
+        <div>
+          <p class="analytics-view__eyebrow">Next best actions</p>
+          <h3>看板给你的下一步建议</h3>
+        </div>
+        <span>基于高价值书籍、主题密度和复习压力生成</span>
+      </div>
+      <div class="analytics-view__recommendation-list">
+        <article
+          v-for="item in recommendations"
+          :key="`${item.type}-${item.title}`"
+          :class="`is-${item.priority}`"
+        >
+          <span>{{ item.priority === 'high' ? '优先' : item.priority === 'medium' ? '建议' : '观察' }}</span>
+          <strong>{{ item.title }}</strong>
+          <p>{{ item.reason }}</p>
+          <button type="button" @click="openRecommendation(item.path)">
+            {{ item.action_label }}
+          </button>
+        </article>
+      </div>
+    </AppCard>
 
     <section class="analytics-view__grid">
       <AppCard class="analytics-view__panel">
@@ -461,6 +490,85 @@ function clampMatrixPosition(value: number) {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 14px;
+}
+
+.analytics-view__recommendations {
+  padding: 22px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(47, 93, 80, 0.12), transparent 30%),
+    linear-gradient(135deg, rgba(255, 253, 249, 0.98), rgba(244, 238, 228, 0.74));
+}
+
+.analytics-view__recommendations-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.analytics-view__recommendations-head h3 {
+  margin: 0;
+}
+
+.analytics-view__recommendations-head > span {
+  color: var(--text-tertiary);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.analytics-view__recommendation-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.analytics-view__recommendation-list article {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(216, 207, 191, 0.68);
+  border-radius: 18px;
+  background: rgba(255, 253, 249, 0.76);
+}
+
+.analytics-view__recommendation-list article.is-high {
+  border-color: rgba(47, 93, 80, 0.22);
+  background:
+    linear-gradient(180deg, rgba(47, 93, 80, 0.08), rgba(255, 253, 249, 0.82)),
+    var(--bg-card);
+}
+
+.analytics-view__recommendation-list span {
+  display: inline-flex;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(47, 93, 80, 0.08);
+  color: var(--brand-primary);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.analytics-view__recommendation-list strong {
+  display: block;
+  margin-top: 10px;
+  line-height: 1.45;
+}
+
+.analytics-view__recommendation-list p {
+  margin: 8px 0 14px;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+.analytics-view__recommendation-list button {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand-primary);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 900;
 }
 
 .analytics-view__grid {
@@ -1101,7 +1209,8 @@ function clampMatrixPosition(value: number) {
 
   .analytics-view__grid,
   .analytics-view__insight-grid,
-  .analytics-view__wide-grid {
+  .analytics-view__wide-grid,
+  .analytics-view__recommendation-list {
     grid-template-columns: 1fr;
   }
 }

@@ -5,14 +5,18 @@ import { useRoute, useRouter } from 'vue-router'
 import AppCard from '@/components/base/AppCard.vue'
 import MascotBubble from '@/components/mascot/MascotBubble.vue'
 import { buildReviewCompletionMascotCue, buildReviewRatingMascotCue } from '@/constants/mascotMessages'
+import { useBooksStore } from '@/stores/books'
 import { useReviewStore } from '@/stores/review'
 import type { ReviewQueue } from '@/types/review'
 
 const route = useRoute()
 const router = useRouter()
+const booksStore = useBooksStore()
 const reviewStore = useReviewStore()
 const { loading, submitting } = storeToRefs(reviewStore)
 const customGoal = ref<number | null>(null)
+const selectedBookId = ref<number | null>(null)
+const selectedTag = ref('')
 const summary = computed(() => reviewStore.dynamicSummary.length ? reviewStore.dynamicSummary : reviewStore.summary)
 const card = computed(() => reviewStore.card)
 const plan = computed(() => reviewStore.plan)
@@ -25,6 +29,22 @@ const ratingFeedback = computed(() => reviewStore.ratingFeedback)
 const activeScope = computed(() => reviewStore.scope)
 const queueOptions = computed(() => reviewStore.queueOptions)
 const weakCards = computed(() => reviewStore.weakCards)
+const bookOptions = computed(() =>
+  [...booksStore.items].sort((left, right) => left.title.localeCompare(right.title, 'zh-Hans-CN')),
+)
+const tagOptions = computed(() => {
+  const tags = new Set<string>()
+  ;[...reviewStore.cards, ...reviewStore.weakCards].forEach((item) => {
+    item.tags.forEach((tag) => {
+      if (tag.trim()) tags.add(tag)
+    })
+  })
+  return [...tags].sort((left, right) => left.localeCompare(right, 'zh-Hans-CN'))
+})
+const activeBookTitle = computed(() => {
+  if (!activeScope.value.book_id) return ''
+  return booksStore.findById(activeScope.value.book_id)?.title ?? `书籍 #${activeScope.value.book_id}`
+})
 const activeQueueOption = computed(() => (
   queueOptions.value.find((option) => option.value === reviewStore.queue)
 ))
@@ -67,6 +87,8 @@ async function loadScopedReview() {
   const bookId = route.query.bookId ? Number(route.query.bookId) : undefined
   const dailyGoal = route.query.goal ? Number(route.query.goal) : undefined
   const queue = route.query.queue ? String(route.query.queue) as ReviewQueue : undefined
+  selectedBookId.value = Number.isNaN(bookId) ? null : bookId ?? null
+  selectedTag.value = tag ?? ''
   await reviewStore.load({
     tag,
     book_id: Number.isNaN(bookId) ? undefined : bookId,
@@ -76,7 +98,12 @@ async function loadScopedReview() {
 }
 
 onMounted(() => {
-  void loadScopedReview()
+  void (async () => {
+    if (booksStore.items.length === 0) {
+      await booksStore.load()
+    }
+    await loadScopedReview()
+  })()
 })
 
 watch(
@@ -113,7 +140,35 @@ function reviewByTag(tag: string) {
   })
 }
 
+function applyReviewScope() {
+  const query = {
+    ...(selectedTag.value ? { tag: selectedTag.value } : {}),
+    ...(selectedBookId.value ? { bookId: String(selectedBookId.value) } : {}),
+    ...(route.query.goal ? { goal: String(route.query.goal) } : {}),
+    ...(reviewStore.queue !== 'due' ? { queue: reviewStore.queue } : {}),
+  }
+  void router.push({
+    path: '/review',
+    query,
+  })
+}
+
+function askAboutWeakCards() {
+  const weakSource = weakCards.value[0]?.source || card.value.source || '今天复习的内容'
+  void router.push({
+    path: '/qa',
+    query: {
+      preset: `帮我总结一下「${weakSource}」里我最需要巩固的观点，并给出可复习的问题。`,
+      ...(weakCards.value[0]?.book_id || card.value.book_id
+        ? { bookId: String(weakCards.value[0]?.book_id || card.value.book_id), scope: 'current-book' }
+        : {}),
+    },
+  })
+}
+
 function clearScope() {
+  selectedBookId.value = null
+  selectedTag.value = ''
   void router.push({
     path: '/review',
   })
@@ -226,6 +281,40 @@ async function setQueue(queue: ReviewQueue) {
             </button>
           </div>
         </div>
+        <div class="review-view__control-row review-view__control-row--scope">
+          <span>复习范围</span>
+          <div class="review-view__scope-controls">
+            <el-select
+              v-model="selectedBookId"
+              clearable
+              filterable
+              placeholder="按书复习"
+              size="small"
+            >
+              <el-option
+                v-for="book in bookOptions"
+                :key="book.id"
+                :label="book.title"
+                :value="book.id"
+              />
+            </el-select>
+            <el-select
+              v-model="selectedTag"
+              clearable
+              filterable
+              placeholder="按主题复习"
+              size="small"
+            >
+              <el-option
+                v-for="tag in tagOptions"
+                :key="tag"
+                :label="tag"
+                :value="tag"
+              />
+            </el-select>
+            <el-button round size="small" @click="applyReviewScope">应用范围</el-button>
+          </div>
+        </div>
       </div>
     </AppCard>
 
@@ -245,6 +334,7 @@ async function setQueue(queue: ReviewQueue) {
         <div class="review-view__completion-actions">
           <el-button type="primary" round @click="reviewStore.restartSession">再练一遍</el-button>
           <el-button round @click="setQueue('weak')">练待巩固</el-button>
+          <el-button round @click="askAboutWeakCards">带着薄弱点去追问</el-button>
         </div>
       </div>
     </AppCard>
@@ -254,7 +344,7 @@ async function setQueue(queue: ReviewQueue) {
         <div>
           <strong>当前复习范围</strong>
           <p v-if="activeScope.tag">按主题复习：{{ activeScope.tag }}</p>
-          <p v-else-if="activeScope.book_id">按单本书复习</p>
+          <p v-else-if="activeScope.book_id">按单本书复习：{{ activeBookTitle }}</p>
         </div>
         <el-button text @click="clearScope">查看全部复习卡片</el-button>
       </div>
@@ -263,6 +353,14 @@ async function setQueue(queue: ReviewQueue) {
         <div v-if="activeQueueOption" class="review-view__queue-hint">
           正在复习：{{ activeQueueOption.label }} · 共 {{ activeQueueOption.count }} 张可选
           <small>{{ activeQueueOption.description }}</small>
+        </div>
+        <div v-if="card.reason.label" class="review-view__reason">
+          <span>{{ card.reason.label }}</span>
+          <div>
+            <strong>为什么今天复习它</strong>
+            <p>{{ card.reason.detail }}</p>
+            <em>{{ card.reason.next_action }}</em>
+          </div>
         </div>
         <h2>{{ card.question }}</h2>
         <p class="review-view__source">来源：{{ card.source }}</p>
@@ -521,6 +619,10 @@ async function setQueue(queue: ReviewQueue) {
   align-items: center;
 }
 
+.review-view__control-row--scope {
+  align-items: start;
+}
+
 .review-view__control-row > span {
   color: var(--text-tertiary);
   font-size: 0.78rem;
@@ -533,6 +635,17 @@ async function setQueue(queue: ReviewQueue) {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.review-view__scope-controls {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(140px, 0.78fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.review-view__scope-controls :deep(.el-select) {
+  min-width: 0;
 }
 
 .review-view__plan-options button,
@@ -681,6 +794,56 @@ async function setQueue(queue: ReviewQueue) {
   font-size: 0.82rem;
   font-weight: 500;
   line-height: 1.45;
+}
+
+.review-view__reason {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(47, 93, 80, 0.12);
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(47, 93, 80, 0.08), rgba(255, 253, 249, 0.72)),
+    var(--bg-card);
+}
+
+.review-view__reason > span {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.review-view__reason strong,
+.review-view__reason p,
+.review-view__reason em {
+  display: block;
+}
+
+.review-view__reason strong {
+  margin-bottom: 5px;
+  color: var(--text-primary);
+}
+
+.review-view__reason p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.review-view__reason em {
+  margin-top: 7px;
+  color: var(--brand-primary);
+  font-size: 0.86rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.5;
 }
 
 .review-view__source {
@@ -878,6 +1041,7 @@ async function setQueue(queue: ReviewQueue) {
   .review-view__completion-stats,
   .review-view__completion-side,
   .review-view__controls,
+  .review-view__scope-controls,
   .review-view__weak-list {
     grid-template-columns: 1fr;
     min-width: 0;

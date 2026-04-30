@@ -3,6 +3,12 @@ export interface ReviewSummaryItem {
   value: string
 }
 
+export interface ReviewCardReason {
+  label: string
+  detail: string
+  next_action: string
+}
+
 export interface ReviewCard {
   id: number
   book_id: number
@@ -15,6 +21,7 @@ export interface ReviewCard {
   mastery_score: number
   last_reviewed_at: string
   next_review_at: string
+  reason: ReviewCardReason
 }
 
 export interface ReviewScope {

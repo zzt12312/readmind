@@ -30,6 +30,13 @@ export interface TopicGraphSample {
   excerpt: string
 }
 
+export interface TopicClusterAction {
+  label: string
+  description: string
+  path: string
+  type: 'qa' | 'notes' | 'review'
+}
+
 export interface TopicCluster {
   id: number
   name: string
@@ -38,6 +45,7 @@ export interface TopicCluster {
   book_count: number
   sample_books: TopicGraphBook[]
   sample_excerpts: TopicGraphSample[]
+  actions?: TopicClusterAction[]
 }
 
 export interface TopicGraphNode {

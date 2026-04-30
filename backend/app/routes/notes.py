@@ -1,7 +1,9 @@
-from flask import Blueprint, current_app, jsonify, request
+from pathlib import Path
+
+from flask import Blueprint, current_app, jsonify, request, send_from_directory
 
 from ..services.job_repository import job_repository
-from ..services.note_insight_service import build_insight_scope_key, generate_notes_insight_sync
+from ..services.note_insight_service import build_insight_scope_key, export_note_insight_markdown, generate_notes_insight_sync
 from ..services.payloads.notes import build_notes_payload
 from ..services.task_runner import enqueue_notes_insight
 from ..services.vault_parser import vault_repository
@@ -65,3 +67,36 @@ def summarize_notes():
         ),
         202,
     )
+
+
+@notes_bp.post("/export-insight")
+def export_insight():
+    payload = request.get_json(silent=True) or {}
+    summary = str(payload.get("summary") or "").strip()
+    sections = payload.get("sections") if isinstance(payload.get("sections"), dict) else None
+    if not summary and not sections:
+        return jsonify({"error": {"code": "NOTE_INSIGHT_EXPORT_EMPTY", "message": "没有可导出的洞察内容", "detail": ""}}), 400
+
+    result = export_note_insight_markdown(
+        export_root=current_app.config["EXPORT_ROOT"],
+        title=str(payload.get("title") or "笔记洞察"),
+        scope=payload.get("scope") if isinstance(payload.get("scope"), dict) else {},
+        summary=summary,
+        sections=sections,
+        references=payload.get("references") if isinstance(payload.get("references"), list) else [],
+    )
+    return jsonify(
+        {
+            **result,
+            "download_url": f"/api/notes/exports/insights/{result['file_name']}",
+            "message": "笔记洞察已导出为 Markdown",
+        }
+    )
+
+
+@notes_bp.get("/exports/insights/<path:file_name>")
+def download_insight_export(file_name: str):
+    if Path(file_name).name != file_name or not file_name.endswith(".md"):
+        return jsonify({"error": {"code": "NOTE_INSIGHT_EXPORT_NOT_FOUND", "message": "导出文件不存在", "detail": ""}}), 404
+    export_dir = Path(current_app.config["EXPORT_ROOT"]).expanduser().resolve() / "insights"
+    return send_from_directory(export_dir, file_name, as_attachment=True)

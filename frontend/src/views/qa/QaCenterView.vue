@@ -4,7 +4,9 @@ import type { ComponentPublicInstance } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
+import AppActionGrid from '@/components/base/AppActionGrid.vue'
 import AppCard from '@/components/base/AppCard.vue'
+import AppStatusStrip from '@/components/base/AppStatusStrip.vue'
 import QaConversation from '@/components/qa/QaConversation.vue'
 import QaHistoryPanel from '@/components/qa/QaHistoryPanel.vue'
 import QaInputBox from '@/components/qa/QaInputBox.vue'
@@ -15,6 +17,7 @@ import { useAppStore } from '@/stores/app'
 import { useBooksStore } from '@/stores/books'
 import { useQaStore } from '@/stores/qa'
 import { buildQaMascotCue } from '@/constants/mascotMessages'
+import type { QaWorkspaceAction, QaWorkspaceStatus } from '@/types/qa'
 import {
   DEFAULT_QA_DRAFT,
   QA_QUICK_PROMPTS,
@@ -29,7 +32,7 @@ const router = useRouter()
 const appStore = useAppStore()
 const booksStore = useBooksStore()
 const qaStore = useQaStore()
-const { messages, loading, sessions, currentSession, stopped, status, generationMode, retrievalMode, fallbackReason, errorMessage } = storeToRefs(qaStore)
+const { messages, loading, sessions, savedAnswers, questionWorkspaces, insightCards, understandings, reviewSeeds, currentSession, stopped, status, generationMode, retrievalMode, fallbackReason, errorMessage } = storeToRefs(qaStore)
 const draft = ref(DEFAULT_QA_DRAFT)
 const scope = ref<'all-books' | 'current-book'>('all-books')
 const scopedBookId = ref<number | undefined>()
@@ -55,6 +58,26 @@ const latestAssistantMessage = computed(() => {
 })
 
 const latestReferences = computed(() => latestAssistantMessage.value?.references ?? [])
+const hasExportableMessages = computed(() => messages.value.some((message) => message.content.trim()))
+const latestAnswerSaved = computed(() =>
+  latestAssistantMessage.value ? qaStore.isMessageSaved(latestAssistantMessage.value.id) : false,
+)
+const latestWorkspace = computed(() => {
+  const question = latestQuestion.value.trim()
+  return question ? questionWorkspaces.value.find((item) => item.question === question) ?? null : null
+})
+const latestInsightSaved = computed(() => {
+  const question = latestQuestion.value.trim()
+  return question ? insightCards.value.some((item) => item.question === question) : false
+})
+const latestUnderstandingSaved = computed(() => {
+  const question = latestQuestion.value.trim()
+  return question ? understandings.value.some((item) => item.question === question) : false
+})
+const latestReviewSeed = computed(() => {
+  const question = latestQuestion.value.trim()
+  return question ? reviewSeeds.value.find((item) => item.question === question) ?? null : null
+})
 const queryRewrite = computed(() => qaStore.queryRewrite)
 const evidence = computed(() => qaStore.evidence)
 const conversationMeta = computed(() => [
@@ -69,6 +92,39 @@ const conversationMeta = computed(() => [
   {
     label: '会话状态',
     value: currentSession.value ? '已恢复历史对话' : '当前新对话',
+  },
+])
+const depositActions = computed(() => [
+  {
+    id: 'workspace',
+    index: '01',
+    title: latestWorkspace.value ? '更新问题' : '沉淀问题',
+    type: '问题',
+    disabled: !latestAssistantMessage.value,
+  },
+  {
+    id: 'insight',
+    index: '02',
+    title: latestInsightSaved.value ? '已存洞察' : '存洞察',
+    type: '洞察',
+    saved: latestInsightSaved.value,
+    disabled: !latestAssistantMessage.value,
+  },
+  {
+    id: 'understanding',
+    index: '03',
+    title: latestUnderstandingSaved.value ? '已成理解' : '我的理解',
+    type: '理解',
+    saved: latestUnderstandingSaved.value,
+    disabled: !latestAssistantMessage.value,
+  },
+  {
+    id: 'review',
+    index: '04',
+    title: latestReviewSeed.value ? '已加复习' : '加入复习',
+    type: '复习',
+    saved: Boolean(latestReviewSeed.value),
+    disabled: !latestReferences.value.length,
   },
 ])
 const followupPrompts = computed(() => {
@@ -195,6 +251,143 @@ async function deleteSession(sessionId: string) {
   }
 }
 
+async function exportConversation() {
+  try {
+    const result = await qaStore.exportCurrentSession(currentScopedBook.value?.title ?? '')
+    ElMessage.success(`已导出到 ${result.relative_path}`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '导出失败，请稍后重试')
+  }
+}
+
+function toggleSaveLatestAnswer() {
+  if (!latestAssistantMessage.value) return
+  try {
+    const saved = qaStore.toggleSaveAnswer(latestAssistantMessage.value.id)
+    ElMessage.success(saved ? '已收藏这条回答' : '已取消收藏')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '收藏失败，请稍后重试')
+  }
+}
+
+function saveLatestToWorkspace() {
+  if (!latestAssistantMessage.value) return
+  try {
+    const workspace = qaStore.saveLatestAnswerToWorkspace(latestAssistantMessage.value.id)
+    ElMessage.success(`已沉淀到问题工作台：${workspace.title}`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '沉淀失败，请稍后重试')
+  }
+}
+
+async function saveLatestAsInsight() {
+  if (!latestAssistantMessage.value) return
+  try {
+    const card = await qaStore.saveLatestAsInsightCard(latestAssistantMessage.value.id)
+    ElMessage.success(`已保存洞察卡片：${card.title}`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存洞察失败，请稍后重试')
+  }
+}
+
+async function saveLatestAsUnderstanding() {
+  if (!latestAssistantMessage.value) return
+  try {
+    const understanding = await qaStore.saveLatestAsUnderstanding(latestAssistantMessage.value.id)
+    ElMessage.success(`已保存为我的理解：${understanding.title}`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存理解失败，请稍后重试')
+  }
+}
+
+async function addLatestAnswerToReview() {
+  if (!latestAssistantMessage.value) return
+  try {
+    const seed = await qaStore.addLatestToReview(latestAssistantMessage.value.id)
+    const firstReference = seed.references[0]
+    if (firstReference) {
+      void router.push({
+        path: '/review',
+        query: {
+          bookId: String(firstReference.book_id),
+          queue: 'new',
+          goal: '5',
+        },
+      })
+    }
+    ElMessage.success(`已加入复习线索：${seed.references.length} 条引用`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '加入复习失败，请稍后重试')
+  }
+}
+
+function handleDepositAction(actionId: string) {
+  if (actionId === 'workspace') {
+    saveLatestToWorkspace()
+    return
+  }
+  if (actionId === 'insight') {
+    void saveLatestAsInsight()
+    return
+  }
+  if (actionId === 'understanding') {
+    void saveLatestAsUnderstanding()
+    return
+  }
+  if (actionId === 'review') {
+    void addLatestAnswerToReview()
+  }
+}
+
+function updateWorkspaceStatus(workspaceId: string, nextStatus: QaWorkspaceStatus) {
+  qaStore.updateWorkspaceStatus(workspaceId, nextStatus)
+  ElMessage.success('问题状态已更新')
+}
+
+function handleWorkspaceAction(workspaceId: string, action: QaWorkspaceAction) {
+  const workspace = questionWorkspaces.value.find((item) => item.id === workspaceId)
+  if (!workspace) return
+
+  if (action === 'followup') {
+    qaStore.updateWorkspaceStatus(workspaceId, 'open')
+    qaStore.restoreWorkspace(workspaceId)
+    scope.value = workspace.scope
+    scopedBookId.value = workspace.book_id ?? undefined
+    draft.value = `继续围绕这个问题补充新的证据或反例：${workspace.question}`
+    ElMessage.success('已打开问题，可以继续追问')
+    return
+  }
+
+  if (action === 'writing') {
+    qaStore.updateWorkspaceStatus(workspaceId, 'writing')
+    qaStore.restoreWorkspace(workspaceId)
+    scope.value = workspace.scope
+    scopedBookId.value = workspace.book_id ?? undefined
+    draft.value = `把这个问题的现有回答整理成写作提纲，按“核心判断 / 证据引用 / 可展开段落”输出：${workspace.question}`
+    ElMessage.success('已切到写作整理模式')
+    return
+  }
+
+  qaStore.updateWorkspaceStatus(workspaceId, 'reviewing')
+  const reference = workspace.references[0]
+  if (reference) {
+    void router.push({
+      path: '/review',
+      query: {
+        bookId: String(reference.book_id),
+        queue: 'new',
+        goal: '5',
+      },
+    })
+    ElMessage.success('已根据引用进入复习中心')
+    return
+  }
+
+  qaStore.restoreWorkspace(workspaceId)
+  draft.value = `请把这个问题整理成 3 张可复习的问题卡：${workspace.question}`
+  ElMessage.info('这个问题还没有引用，先生成可复习的问题卡')
+}
+
 function handleScopeChange(nextScope: 'all-books' | 'current-book') {
   if (nextScope === 'current-book' && !scopedBookId.value && selectableBooks.value.length > 0) {
     scopedBookId.value = selectableBooks.value[0].id
@@ -283,12 +476,20 @@ watch(
     <section class="qa-view__layout">
       <QaHistoryPanel
         :sessions="sessions"
+        :saved-answers="savedAnswers"
+        :question-workspaces="questionWorkspaces"
         :current-session-id="currentSession?.id"
         @new-conversation="qaStore.resetConversation"
         @restore="restoreSession"
         @toggle-pin="qaStore.togglePinSession"
         @rename="renameSession"
         @delete="deleteSession"
+        @restore-saved="qaStore.restoreSavedAnswer"
+        @delete-saved="qaStore.deleteSavedAnswer"
+        @restore-workspace="qaStore.restoreWorkspace"
+        @delete-workspace="qaStore.deleteWorkspace"
+        @update-workspace-status="updateWorkspaceStatus"
+        @workspace-action="handleWorkspaceAction"
       />
 
       <AppCard class="qa-view__main">
@@ -331,12 +532,7 @@ watch(
 
         <div v-if="latestAssistantMessage" class="qa-view__followups">
           <div class="qa-view__answer-toolbar">
-            <div class="qa-view__answer-meta">
-              <div v-for="item in conversationMeta" :key="item.label" class="qa-view__meta-pill">
-                <strong>{{ item.label }}</strong>
-                <span>{{ item.value }}</span>
-              </div>
-            </div>
+            <AppStatusStrip :items="conversationMeta" />
             <div class="qa-view__feedback-actions">
               <el-button
                 round
@@ -353,6 +549,30 @@ watch(
                 不够准确
               </el-button>
               <el-button round :disabled="loading" @click="qaStore.regenerateLastAnswer">重新生成这一轮</el-button>
+              <el-button
+                round
+                :type="latestAnswerSaved ? 'success' : 'default'"
+                :disabled="loading || !latestAssistantMessage"
+                @click="toggleSaveLatestAnswer"
+              >
+                {{ latestAnswerSaved ? '已收藏' : '收藏回答' }}
+              </el-button>
+              <el-button
+                round
+                :type="latestWorkspace ? 'success' : 'default'"
+                :disabled="loading || !latestAssistantMessage"
+                @click="saveLatestToWorkspace"
+              >
+                {{ latestWorkspace ? '更新问题' : '沉淀为问题' }}
+              </el-button>
+              <el-button
+                round
+                :loading="qaStore.exporting"
+                :disabled="loading || !hasExportableMessages"
+                @click="exportConversation"
+              >
+                导出 Markdown
+              </el-button>
             </div>
           </div>
           <strong class="qa-view__followup-title">继续追问</strong>
@@ -360,6 +580,23 @@ watch(
             <el-button v-for="prompt in followupPrompts" :key="prompt" round @click="useFollowupPrompt(prompt)">
               {{ prompt }}
             </el-button>
+          </div>
+          <div class="qa-view__deposit">
+            <div class="qa-view__deposit-copy">
+              <div class="qa-view__deposit-heading">
+                <strong>{{ latestWorkspace ? '问题已进入工作台' : '沉淀这次回答' }}</strong>
+                <el-tag v-if="latestWorkspace" round effect="plain">
+                  {{ latestWorkspace.evidence_count }} 条证据
+                </el-tag>
+              </div>
+              <p>
+                {{ latestWorkspace
+                  ? `已沉淀为问题。${latestWorkspace.next_action}`
+                  : '把这次回答保存成洞察、复习线索或自己的理解，让 AI 结果真正留下来。'
+                }}
+              </p>
+            </div>
+            <AppActionGrid :actions="depositActions" @action="handleDepositAction" />
           </div>
         </div>
 
@@ -460,7 +697,7 @@ watch(
 
 .qa-view__layout {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1.4fr) 360px;
+  grid-template-columns: 320px minmax(0, 1.4fr) 360px;
   gap: 18px;
   align-items: stretch;
 }
@@ -531,50 +768,24 @@ watch(
 }
 
 .qa-view__answer-toolbar {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 12px;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(47, 93, 80, 0.06);
-}
-
-.qa-view__answer-meta {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  flex: 1 1 320px;
-}
-
-.qa-view__meta-pill {
-  min-width: 120px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(47, 93, 80, 0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.qa-view__meta-pill strong {
-  font-size: 0.78rem;
-  color: var(--text-tertiary);
-}
-
-.qa-view__meta-pill span {
-  color: var(--text-secondary);
-  line-height: 1.5;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgba(47, 93, 80, 0.1);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(47, 93, 80, 0.05), rgba(255, 253, 249, 0.72)),
+    rgba(255, 253, 249, 0.72);
 }
 
 .qa-view__feedback-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  flex: 0 1 auto;
+  justify-content: flex-start;
+  min-width: 0;
 }
 
 .qa-view__followup-title {
@@ -587,6 +798,44 @@ watch(
   gap: 10px;
 }
 
+.qa-view__deposit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 15px;
+  border: 1px solid rgba(47, 93, 80, 0.13);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(47, 93, 80, 0.07), rgba(192, 139, 92, 0.06)),
+    var(--bg-card);
+}
+
+.qa-view__deposit-copy {
+  min-width: 0;
+}
+
+.qa-view__deposit-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.qa-view__deposit strong,
+.qa-view__deposit p {
+  display: block;
+}
+
+.qa-view__deposit p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1180px) {
   .qa-view__layout {
     grid-template-columns: 1fr;
@@ -596,8 +845,12 @@ watch(
     min-height: auto;
     height: auto;
   }
-}
 
+  .qa-view__answer-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+}
 @media (max-width: 768px) {
   .qa-view__hero {
     align-items: flex-start;

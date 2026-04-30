@@ -195,9 +195,62 @@ def build_review_cards(
             "mastery_score": int((progress or {}).get("mastery_score") or 0),
             "last_reviewed_at": (progress or {}).get("last_reviewed_at", ""),
             "next_review_at": (progress or {}).get("next_review_at", ""),
+            "reason": build_card_reason(note, progress),
         }
         for index, (_, note, progress) in enumerate(review_notes)
     ]
+
+
+def build_card_reason(note: dict[str, Any], progress: dict[str, Any] | None) -> dict[str, str]:
+    tags = [str(tag) for tag in note.get("tags", []) if str(tag).strip()]
+    topic_text = f"「{tags[0]}」主题" if tags else "这条摘录"
+
+    if not progress:
+        return {
+            "label": "新卡片",
+            "detail": f"{topic_text}还没有复习记录，适合先建立第一印象。",
+            "next_action": "先用自己的话复述一遍，再查看原摘录校准理解。",
+        }
+
+    last_result = str(progress.get("last_result") or "")
+    mastery_score = int(progress.get("mastery_score") or 0)
+    review_count = int(progress.get("review_count") or 0)
+    next_review_at = str(progress.get("next_review_at") or "")
+    last_reviewed_at = str(progress.get("last_reviewed_at") or "")
+
+    if last_result == "low" or mastery_score <= 0:
+        return {
+            "label": "上次没想起来",
+            "detail": f"{topic_text}上次标记为“不会”，今天优先回看可以减少遗忘。",
+            "next_action": "不用追求完整背诵，先抓住一个核心观点。",
+        }
+
+    if last_result == "medium" or mastery_score == 1:
+        return {
+            "label": "待巩固",
+            "detail": f"{topic_text}上次还不够稳定，适合趁间隔不长再巩固一次。",
+            "next_action": "先说出大意，再看摘录里有没有遗漏的关键词。",
+        }
+
+    if next_review_at:
+        return {
+            "label": "按计划到期",
+            "detail": f"这张卡片已复习 {review_count} 次，计划在 {next_review_at[:10]} 前后再次出现。",
+            "next_action": "如果能主动复述，可以标记“熟练掌握”拉长下次间隔。",
+        }
+
+    if last_reviewed_at:
+        return {
+            "label": "长期未回看",
+            "detail": f"这张卡片上次复习在 {last_reviewed_at[:10]}，适合重新唤醒。",
+            "next_action": "先回想当时为什么划线，再决定是否继续保留。",
+        }
+
+    return {
+        "label": "值得回看",
+        "detail": f"{topic_text}有较完整的摘录内容，适合放进今天的小组复习。",
+        "next_action": "复述后可以跳回原笔记，看看上下文是否还有新理解。",
+    }
 
 
 def build_review_summary(overview: dict[str, Any], due_count: str | None = None) -> list[dict[str, str]]:
@@ -278,4 +331,9 @@ def empty_review_card() -> dict[str, Any]:
         "mastery_score": 0,
         "last_reviewed_at": "",
         "next_review_at": "",
+        "reason": {
+            "label": "",
+            "detail": "",
+            "next_action": "",
+        },
     }

@@ -45,6 +45,7 @@ def build_dashboard_payload(data: dict[str, Any], review_state: dict[str, Any]) 
             "streak_days": review_state["streak_days"],
             "mastery_rate": review_state["mastery_rate"],
         },
+        "activation_report": build_activation_report(books, notes, stats, review_state, recent_books, suggested_review_count),
         "daily_brief": build_daily_brief(books, notes, stats, review_state, suggested_review_count),
         "action_queue": build_action_queue(books, stats, review_state, suggested_review_count),
         "recommended_review": build_recommended_review(books, stats),
@@ -129,6 +130,79 @@ def build_daily_brief(
             "author": pick_favorite_author(books),
         },
     }
+
+
+def build_activation_report(
+    books: list[dict[str, Any]],
+    notes: list[dict[str, Any]],
+    stats: dict[str, Any],
+    review_state: dict[str, Any],
+    recent_books: list[dict[str, Any]],
+    suggested_review_count: int,
+) -> dict[str, Any]:
+    """Summarize the first visible value after a vault sync."""
+
+    top_topics = [str(topic) for topic in stats.get("top_topics", []) if str(topic).strip()][:5]
+    featured_book = pick_featured_book(books)
+    recent_titles = [book["title"] for book in recent_books[:3] if book.get("title")]
+    prompt_topic = top_topics[0] if top_topics else "最近阅读"
+    prompt_book = featured_book["title"] if featured_book else (recent_titles[0] if recent_titles else "")
+
+    questions = [
+        f"我关于「{prompt_topic}」的笔记里，最值得回看的 3 个观点是什么？",
+        "哪些摘录适合加入今天的复习？",
+    ]
+    if prompt_book:
+        questions.insert(1, f"《{prompt_book}》里有哪些可以继续追问的问题？")
+
+    asset_cards = [
+        {
+            "label": "已识别书籍",
+            "value": str(stats.get("book_count", len(books))),
+            "hint": "来自你的阅读目录",
+        },
+        {
+            "label": "可追问摘录",
+            "value": str(stats.get("note_count", len(notes))),
+            "hint": "会作为回答依据",
+        },
+        {
+            "label": "高频主题",
+            "value": str(len(top_topics)),
+            "hint": "适合继续整理",
+        },
+        {
+            "label": "今日小组",
+            "value": f"{suggested_review_count} 张",
+            "hint": f"总待复习 {review_state['due_count']} 张",
+        },
+    ]
+
+    return {
+        "title": "你的阅读资产已经准备好",
+        "summary": build_activation_summary(stats, top_topics, recent_titles),
+        "asset_cards": asset_cards,
+        "top_topics": top_topics,
+        "recent_books": recent_titles,
+        "recommended_questions": questions[:3],
+        "primary_action": {
+            "label": "开始 5 分钟回看",
+            "path": "/review",
+        },
+        "secondary_action": {
+            "label": "问自己的笔记",
+            "path": "/qa",
+        },
+    }
+
+
+def build_activation_summary(stats: dict[str, Any], topics: list[str], recent_titles: list[str]) -> str:
+    topic_text = "、".join(topics[:3]) if topics else "你的阅读主题"
+    book_text = "、".join(f"《{title}》" for title in recent_titles[:2]) if recent_titles else "最近同步的书"
+    return (
+        f"系统已整理 {stats.get('book_count', 0)} 本书、{stats.get('note_count', 0)} 条摘录。"
+        f"可以先从 {book_text} 和「{topic_text}」开始追问，把旧划线重新变成可用线索。"
+    )
 
 
 def build_daily_brief_summary(

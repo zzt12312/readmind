@@ -22,6 +22,31 @@ const statusTone = computed(() => {
   if (props.status.phase === 'success') return props.generationMode === 'fallback' ? 'warning' : 'success'
   return 'primary'
 })
+
+const evidenceLevel = computed(() => {
+  if (!props.evidence) {
+    return null
+  }
+  if (props.evidence.reference_count >= 3 && props.evidence.sufficient) {
+    return {
+      tone: 'strong',
+      label: '证据充分',
+      action: '可以继续追问细节，或从右侧引用回到原始摘录。',
+    }
+  }
+  if (props.evidence.reference_count > 0) {
+    return {
+      tone: 'partial',
+      label: '证据一般',
+      action: '更适合回答局部重点；想要更完整答案，可以切换到全库或换一个更具体的问题。',
+    }
+  }
+  return {
+    tone: 'weak',
+    label: '证据不足',
+    action: '当前没有可用引用，建议放宽检索范围、换关键词，或先去笔记工作台确认相关摘录。',
+  }
+})
 </script>
 
 <template>
@@ -38,9 +63,20 @@ const statusTone = computed(() => {
     </div>
   </div>
 
-  <div v-if="evidence" class="qa-status-panel__evidence" :class="{ 'is-warning': !evidence.sufficient }">
-    <strong>证据充足度</strong>
+  <div
+    v-if="evidence && evidenceLevel"
+    class="qa-status-panel__evidence"
+    :class="`is-${evidenceLevel.tone}`"
+  >
+    <div class="qa-status-panel__evidence-head">
+      <strong>{{ evidenceLevel.label }}</strong>
+      <span>{{ evidence.reference_count }} 条引用</span>
+    </div>
     <p>{{ evidence.message }}</p>
+    <div class="qa-status-panel__evidence-meta">
+      <span>建议回答 {{ evidence.suggested_points }} 个重点</span>
+      <span>{{ evidenceLevel.action }}</span>
+    </div>
   </div>
 
   <div v-if="queryRewrite" class="qa-status-panel__rewrite">
@@ -127,9 +163,47 @@ const statusTone = computed(() => {
   border: 1px solid rgba(47, 93, 80, 0.08);
 }
 
-.qa-status-panel__evidence.is-warning {
+.qa-status-panel__evidence.is-partial {
   background: rgba(192, 139, 92, 0.08);
   border-color: rgba(192, 139, 92, 0.2);
+}
+
+.qa-status-panel__evidence.is-weak {
+  background: rgba(190, 76, 60, 0.07);
+  border-color: rgba(190, 76, 60, 0.18);
+}
+
+.qa-status-panel__evidence-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.qa-status-panel__evidence-head span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.82);
+  color: var(--brand-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.qa-status-panel__evidence-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.qa-status-panel__evidence-meta span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.78);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .qa-status-panel__rewrite {
@@ -161,4 +235,3 @@ const statusTone = computed(() => {
   color: #9a6131;
 }
 </style>
-

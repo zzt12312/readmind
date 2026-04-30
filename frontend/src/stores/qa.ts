@@ -1,14 +1,31 @@
 import { defineStore } from 'pinia'
+import { createQaDeposit, exportQaSession } from '@/api/modules/qa'
 import {
   createMessageId,
   createSession,
   createSessionTitle,
+  createInsightCardId,
+  createQuestionWorkspaceId,
+  createReviewSeedId,
+  createSavedAnswerId,
+  createUnderstandingId,
+  clearQaLocalData,
+  loadInsightCards,
+  loadQuestionWorkspaces,
+  loadReviewSeeds,
+  loadSavedAnswers,
   loadQaSessions,
+  loadUnderstandings,
+  saveInsightCards,
+  saveQuestionWorkspaces,
+  saveReviewSeeds,
+  saveSavedAnswers,
   saveQaSessions,
+  saveUnderstandings,
   sortSessions,
 } from '@/services/qaSessionStorage'
 import { streamQuestion } from '@/services/qaStreamClient'
-import type { QaAskPayload, QaEvidenceSummary, QaMessage, QaReference, QaSession, QaStatusPayload, QueryRewriteSummary } from '@/types/qa'
+import type { QaAskPayload, QaEvidenceSummary, QaExportResponse, QaInsightCard, QaMessage, QaQuestionWorkspace, QaReference, QaReviewSeed, QaSavedAnswer, QaSession, QaStatusPayload, QaUnderstanding, QueryRewriteSummary } from '@/types/qa'
 
 // QA store owns conversation state only. Persistence and SSE parsing live in
 // `services/qaSessionStorage` and `services/qaStreamClient` so they can evolve
@@ -20,8 +37,14 @@ export const useQaStore = defineStore('qa', {
     references: [] as QaReference[],
     messages: [] as QaMessage[],
     sessions: [] as QaSession[],
+    savedAnswers: [] as QaSavedAnswer[],
+    questionWorkspaces: [] as QaQuestionWorkspace[],
+    insightCards: [] as QaInsightCard[],
+    understandings: [] as QaUnderstanding[],
+    reviewSeeds: [] as QaReviewSeed[],
     currentSessionId: null as string | null,
     loading: false,
+    exporting: false,
     stopped: false,
     scope: 'all-books' as 'all-books' | 'current-book',
     bookId: null as number | null,
@@ -46,9 +69,29 @@ export const useQaStore = defineStore('qa', {
   actions: {
     hydrateSessions() {
       this.sessions = sortSessions(loadQaSessions())
+      this.savedAnswers = loadSavedAnswers()
+      this.questionWorkspaces = loadQuestionWorkspaces()
+      this.insightCards = loadInsightCards()
+      this.understandings = loadUnderstandings()
+      this.reviewSeeds = loadReviewSeeds()
     },
     persistSessions() {
       this.sessions = saveQaSessions(this.sessions)
+    },
+    persistSavedAnswers() {
+      this.savedAnswers = saveSavedAnswers(this.savedAnswers)
+    },
+    persistQuestionWorkspaces() {
+      this.questionWorkspaces = saveQuestionWorkspaces(this.questionWorkspaces)
+    },
+    persistInsightCards() {
+      this.insightCards = saveInsightCards(this.insightCards)
+    },
+    persistUnderstandings() {
+      this.understandings = saveUnderstandings(this.understandings)
+    },
+    persistReviewSeeds() {
+      this.reviewSeeds = saveReviewSeeds(this.reviewSeeds)
     },
     // 会话在首次提问时创建，后续连续追问都复用同一个 session，便于恢复上下文。
     ensureSession(payload: QaAskPayload) {
@@ -143,6 +186,268 @@ export const useQaStore = defineStore('qa', {
       )
       this.messages = nextMessages
       this.updateSessionMessages(nextMessages)
+    },
+    isMessageSaved(messageId: string) {
+      return this.savedAnswers.some((item) => item.message_id === messageId)
+    },
+    toggleSaveAnswer(messageId: string) {
+      const existing = this.savedAnswers.find((item) => item.message_id === messageId)
+      if (existing) {
+        this.savedAnswers = this.savedAnswers.filter((item) => item.id !== existing.id)
+        this.persistSavedAnswers()
+        return false
+      }
+
+      const assistantIndex = this.messages.findIndex((message) => message.id === messageId)
+      const assistantMessage = this.messages[assistantIndex]
+      if (!assistantMessage || assistantMessage.role !== 'assistant' || !assistantMessage.content.trim()) {
+        throw new Error('当前没有可收藏的回答')
+      }
+      const userMessage = [...this.messages.slice(0, assistantIndex)]
+        .reverse()
+        .find((message) => message.role === 'user')
+      const title = createSessionTitle(userMessage?.content || this.currentSession?.title || '收藏回答')
+      this.savedAnswers = saveSavedAnswers([
+        {
+          id: createSavedAnswerId(),
+          session_id: this.currentSessionId,
+          message_id: assistantMessage.id,
+          title,
+          question: userMessage?.content ?? '',
+          answer: assistantMessage.content,
+          references: assistantMessage.references ?? [],
+          scope: this.scope,
+          book_id: this.bookId,
+          saved_at: new Date().toISOString(),
+        },
+        ...this.savedAnswers,
+      ])
+      return true
+    },
+    deleteSavedAnswer(savedAnswerId: string) {
+      this.savedAnswers = this.savedAnswers.filter((item) => item.id !== savedAnswerId)
+      this.persistSavedAnswers()
+    },
+    restoreSavedAnswer(savedAnswerId: string) {
+      const saved = this.savedAnswers.find((item) => item.id === savedAnswerId)
+      if (!saved) return
+      this.stopStreaming()
+      this.currentSessionId = null
+      this.messages = [
+        { id: `${saved.id}-question`, role: 'user', content: saved.question, references: [], feedback: null },
+        { id: saved.message_id, role: 'assistant', content: saved.answer, references: saved.references, feedback: null },
+      ]
+      this.question = saved.question
+      this.answer = saved.answer
+      this.references = saved.references
+      this.scope = saved.scope
+      this.bookId = saved.book_id ?? null
+      this.errorMessage = ''
+      this.fallbackReason = ''
+      this.queryRewrite = null
+      this.evidence = null
+      this.generationMode = 'llm'
+      this.status = {
+        phase: 'success',
+        label: '已打开收藏回答',
+        detail: '这是你之前收藏的回答，可以继续追问，或导出成 Markdown。',
+      }
+    },
+    saveLatestAnswerToWorkspace(messageId: string) {
+      const assistantIndex = this.messages.findIndex((message) => message.id === messageId)
+      const assistantMessage = this.messages[assistantIndex]
+      if (!assistantMessage || assistantMessage.role !== 'assistant' || !assistantMessage.content.trim()) {
+        throw new Error('当前没有可沉淀的回答')
+      }
+      const userMessage = [...this.messages.slice(0, assistantIndex)]
+        .reverse()
+        .find((message) => message.role === 'user')
+      const question = userMessage?.content.trim() || this.currentSession?.title || '未命名问题'
+      const title = createSessionTitle(question)
+      const references = assistantMessage.references ?? []
+      const now = new Date().toISOString()
+      const existing = this.questionWorkspaces.find((item) => item.question === question)
+      const workspace: QaQuestionWorkspace = {
+        id: existing?.id ?? createQuestionWorkspaceId(),
+        title: existing?.title || title,
+        question,
+        latest_answer: assistantMessage.content,
+        references,
+        scope: this.scope,
+        book_id: this.bookId,
+        status: existing?.status ?? 'open',
+        evidence_count: references.length,
+        next_action: references.length >= 3
+          ? '证据已经比较充分，可以整理成写作素材或进入复习。'
+          : '继续追问，补充更多引用证据。',
+        created_at: existing?.created_at ?? now,
+        updated_at: now,
+      }
+      this.questionWorkspaces = saveQuestionWorkspaces([
+        workspace,
+        ...this.questionWorkspaces.filter((item) => item.id !== workspace.id),
+      ])
+      return workspace
+    },
+    updateWorkspaceStatus(workspaceId: string, status: QaQuestionWorkspace['status']) {
+      this.questionWorkspaces = this.questionWorkspaces.map((item) =>
+        item.id === workspaceId
+          ? { ...item, status, updated_at: new Date().toISOString() }
+          : item,
+      )
+      this.persistQuestionWorkspaces()
+    },
+    deleteWorkspace(workspaceId: string) {
+      this.questionWorkspaces = this.questionWorkspaces.filter((item) => item.id !== workspaceId)
+      this.persistQuestionWorkspaces()
+    },
+    restoreWorkspace(workspaceId: string) {
+      const workspace = this.questionWorkspaces.find((item) => item.id === workspaceId)
+      if (!workspace) return
+      this.stopStreaming()
+      this.currentSessionId = null
+      this.messages = [
+        { id: `${workspace.id}-question`, role: 'user', content: workspace.question, references: [], feedback: null },
+        { id: `${workspace.id}-answer`, role: 'assistant', content: workspace.latest_answer, references: workspace.references, feedback: null },
+      ]
+      this.question = workspace.question
+      this.answer = workspace.latest_answer
+      this.references = workspace.references
+      this.scope = workspace.scope
+      this.bookId = workspace.book_id ?? null
+      this.errorMessage = ''
+      this.fallbackReason = ''
+      this.queryRewrite = null
+      this.evidence = null
+      this.generationMode = 'llm'
+      this.status = {
+        phase: 'success',
+        label: '已打开问题工作台',
+        detail: '这是围绕同一个问题沉淀的最新回答，可以继续追问或导出。',
+      }
+    },
+    getAnswerContext(messageId: string) {
+      const assistantIndex = this.messages.findIndex((message) => message.id === messageId)
+      const assistantMessage = this.messages[assistantIndex]
+      if (!assistantMessage || assistantMessage.role !== 'assistant' || !assistantMessage.content.trim()) {
+        throw new Error('当前没有可沉淀的回答')
+      }
+      const userMessage = [...this.messages.slice(0, assistantIndex)]
+        .reverse()
+        .find((message) => message.role === 'user')
+      const question = userMessage?.content.trim() || this.currentSession?.title || '未命名问题'
+      return {
+        question,
+        title: createSessionTitle(question),
+        answer: assistantMessage.content,
+        references: assistantMessage.references ?? [],
+      }
+    },
+    async saveLatestAsInsightCard(messageId: string) {
+      const context = this.getAnswerContext(messageId)
+      const payload = {
+        deposit_type: 'insight_card' as const,
+        title: `洞察：${context.title}`,
+        question: context.question,
+        content: buildInsightSummary(context.answer),
+        references: context.references,
+        scope: this.scope,
+        book_id: this.bookId,
+      }
+      await createQaDeposit(payload)
+      const card: QaInsightCard = {
+        id: createInsightCardId(),
+        title: payload.title,
+        question: payload.question,
+        summary: payload.content,
+        references: payload.references,
+        created_at: new Date().toISOString(),
+      }
+      this.insightCards = saveInsightCards([card, ...this.insightCards])
+      return card
+    },
+    async saveLatestAsUnderstanding(messageId: string) {
+      const context = this.getAnswerContext(messageId)
+      const now = new Date().toISOString()
+      const existing = this.understandings.find((item) => item.question === context.question)
+      const payload = {
+        deposit_type: 'understanding' as const,
+        title: existing?.title || `我的理解：${context.title}`,
+        question: context.question,
+        content: context.answer,
+        references: context.references,
+        scope: this.scope,
+        book_id: this.bookId,
+      }
+      await createQaDeposit(payload)
+      const understanding: QaUnderstanding = {
+        id: existing?.id ?? createUnderstandingId(),
+        title: payload.title,
+        question: payload.question,
+        content: payload.content,
+        references: payload.references,
+        created_at: existing?.created_at ?? now,
+        updated_at: now,
+      }
+      this.understandings = saveUnderstandings([
+        understanding,
+        ...this.understandings.filter((item) => item.id !== understanding.id),
+      ])
+      return understanding
+    },
+    async addLatestToReview(messageId: string) {
+      const context = this.getAnswerContext(messageId)
+      if (!context.references.length) {
+        throw new Error('当前回答没有引用，暂时无法加入复习')
+      }
+      const noteIds = [...new Set(context.references.map((reference) => reference.note_id))]
+      const payload = {
+        deposit_type: 'review_seed' as const,
+        title: `复习：${context.title}`,
+        question: context.question,
+        content: context.answer,
+        references: context.references,
+        scope: this.scope,
+        book_id: context.references[0]?.book_id ?? this.bookId,
+        note_ids: noteIds,
+        status: 'queued',
+      }
+      await createQaDeposit(payload)
+      const seed: QaReviewSeed = {
+        id: createReviewSeedId(),
+        title: payload.title,
+        question: payload.question,
+        references: payload.references,
+        book_id: payload.book_id,
+        note_ids: noteIds,
+        created_at: new Date().toISOString(),
+      }
+      this.reviewSeeds = saveReviewSeeds([seed, ...this.reviewSeeds])
+      return seed
+    },
+    clearLocalQaData() {
+      this.stopStreaming()
+      clearQaLocalData()
+      this.question = ''
+      this.answer = ''
+      this.references = []
+      this.messages = []
+      this.sessions = []
+      this.savedAnswers = []
+      this.questionWorkspaces = []
+      this.insightCards = []
+      this.understandings = []
+      this.reviewSeeds = []
+      this.currentSessionId = null
+      this.errorMessage = ''
+      this.fallbackReason = ''
+      this.queryRewrite = null
+      this.evidence = null
+      this.status = {
+        phase: 'idle',
+        label: '等待提问',
+        detail: '从你的个人读书笔记中提问，系统会先检索引用，再组织回答。',
+      }
     },
     async ask(payload: QaAskPayload) {
       // Flow: create/update session -> append user + empty assistant bubble ->
@@ -248,6 +553,25 @@ export const useQaStore = defineStore('qa', {
         this.abortController = null
       }
     },
+    async exportCurrentSession(bookTitle = ''): Promise<QaExportResponse> {
+      const exportableMessages = this.messages.filter((message) => message.content.trim())
+      if (!exportableMessages.length) {
+        throw new Error('当前还没有可导出的问答内容')
+      }
+
+      this.exporting = true
+      try {
+        const title = this.currentSession?.title || this.question || '问答导出'
+        return await exportQaSession({
+          title,
+          scope: this.scope,
+          book_title: bookTitle,
+          messages: exportableMessages,
+        })
+      } finally {
+        this.exporting = false
+      }
+    },
     stopStreaming() {
       if (!this.loading || !this.abortController) return
       this.stopped = true
@@ -299,3 +623,9 @@ export const useQaStore = defineStore('qa', {
     },
   },
 })
+
+function buildInsightSummary(answer: string) {
+  const normalized = answer.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= 220) return normalized
+  return `${normalized.slice(0, 220)}...`
+}

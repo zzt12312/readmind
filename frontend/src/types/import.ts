@@ -17,6 +17,7 @@ export interface ImportMeta {
   vault_status?: 'ready' | 'missing' | 'invalid' | 'empty'
   vault_message?: string
   markdown_count?: number
+  export_root?: string
 }
 
 export interface ImportSyncFeedback {

@@ -23,6 +23,11 @@ const emptyCard: ReviewCard = {
   mastery_score: 0,
   last_reviewed_at: '',
   next_review_at: '',
+  reason: {
+    label: '',
+    detail: '',
+    next_action: '',
+  },
 }
 
 const defaultPlan: ReviewPlan = {
@@ -130,8 +135,8 @@ export const useReviewStore = defineStore('review', {
         this.dailyGoal = data.plan.selected_daily_goal
         this.levelGuidance = data.level_guidance
         this.queueOptions = data.queue_options
-        this.cards = data.cards.length > 0 ? data.cards : data.card.id ? [data.card] : []
-        this.weakCards = data.weak_cards
+        this.cards = (data.cards.length > 0 ? data.cards : data.card.id ? [data.card] : []).map(normalizeReviewCard)
+        this.weakCards = data.weak_cards.map(normalizeReviewCard)
         this.scope = data.scope
         this.queue = data.scope.queue
         this.currentIndex = 0
@@ -262,5 +267,17 @@ function buildRatingFeedback(level: ReviewLevel, masteryScore: number, nextRevie
     nextReviewDate,
     masteryScore,
     movedToWeak: true,
+  }
+}
+
+function normalizeReviewCard(card: ReviewCard): ReviewCard {
+  return {
+    ...emptyCard,
+    ...card,
+    tags: card.tags ?? [],
+    reason: {
+      ...emptyCard.reason,
+      ...(card.reason ?? {}),
+    },
   }
 }

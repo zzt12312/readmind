@@ -41,6 +41,30 @@ export interface NoteInsight {
   query_rewrite?: QueryRewriteSummary | null
 }
 
+export interface NoteInsightExportPayload {
+  title: string
+  scope: {
+    book_id?: number
+    book_title?: string
+    q?: string
+    category?: string
+    tag?: string
+    chapter?: string
+    sort?: string
+  }
+  summary: string
+  sections: NoteInsightSections | null
+  references: NoteInsightReference[]
+}
+
+export interface NoteInsightExportResponse {
+  file_name: string
+  relative_path: string
+  absolute_path: string
+  download_url: string
+  message: string
+}
+
 export interface NoteFilters {
   categories: string[]
   tags: string[]

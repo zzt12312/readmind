@@ -52,6 +52,11 @@ def test_dashboard_payload_includes_daily_brief() -> None:
     assert payload["daily_brief"]["highlights"]["book"]["title"] == "长期主义"
     assert payload["daily_brief"]["highlights"]["author"] == "作者 A"
     assert payload["daily_brief"]["suggested_actions"][0]["path"] == "/review"
+    assert payload["activation_report"]["title"] == "你的阅读资产已经准备好"
+    assert payload["activation_report"]["asset_cards"][0]["value"] == "2"
+    assert payload["activation_report"]["top_topics"] == ["长期主义", "现金流"]
+    assert payload["activation_report"]["recommended_questions"][0].startswith("我关于「长期主义」")
+    assert payload["activation_report"]["primary_action"]["path"] == "/review"
     assert payload["action_queue"][0]["title"] == "完成 6 张卡片"
     assert payload["action_queue"][1]["path"] == "/books/1"
     assert payload["recommended_review"]["title"] == "长期主义"

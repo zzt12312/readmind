@@ -23,6 +23,7 @@ const props = defineProps<{
 
 defineEmits<{
   refresh: []
+  exportInsight: []
   reviewByTopic: [topic: string]
   jumpToReference: [reference: NoteInsightReference]
 }>()
@@ -45,6 +46,9 @@ const mascotCue = computed(() => buildNoteInsightMascotCue({
         {{ hasGeneratedInsight ? '重新总结' : '生成总结' }}
       </el-button>
     </div>
+    <div v-if="hasGeneratedInsight" class="note-insight-panel__tools">
+      <el-button round size="small" @click="$emit('exportInsight')">导出洞察</el-button>
+    </div>
     <section class="note-insight-panel__state" :class="`is-${insightState.tone}`">
       <strong>{{ insightState.label }}</strong>
       <p>{{ insightState.detail }}</p>
@@ -54,7 +58,6 @@ const mascotCue = computed(() => buildNoteInsightMascotCue({
       :mood="mascotCue.mood"
       :message="mascotCue.message"
       :celebrating="mascotCue.celebrating"
-      portrait
       compact
     />
     <div class="note-insight-panel__scroll">
@@ -143,7 +146,7 @@ const mascotCue = computed(() => buildNoteInsightMascotCue({
   position: sticky;
   top: 106px;
   max-height: calc(100vh - 126px);
-  padding: 22px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
   background:
@@ -171,10 +174,16 @@ const mascotCue = computed(() => buildNoteInsightMascotCue({
   margin: 0;
 }
 
+.note-insight-panel__tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
 .note-insight-panel__state {
-  margin-top: 14px;
-  padding: 15px 16px;
-  border-radius: 18px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 14px;
   border: 1px solid rgba(47, 93, 80, 0.12);
   background:
     linear-gradient(135deg, rgba(47, 93, 80, 0.08), rgba(255, 253, 249, 0.72)),
@@ -193,63 +202,70 @@ const mascotCue = computed(() => buildNoteInsightMascotCue({
 
 .note-insight-panel__state strong {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .note-insight-panel__mascot {
-  margin-top: 12px;
+  margin-top: 10px;
   flex: 0 0 auto;
 }
 
-.note-insight-panel__mascot :deep(.mascot-bubble.is-portrait) {
-  grid-template-columns: 136px minmax(0, 1fr);
-  min-height: 198px;
-  align-items: center;
-}
-
 .note-insight-panel__mascot :deep(.mascot-bubble__avatar) {
-  min-width: 136px;
-  height: 174px;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border-radius: 15px;
 }
 
 .note-insight-panel__mascot :deep(.mascot-bubble__content p) {
-  line-height: 1.7;
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.note-insight-panel__mascot :deep(.mascot-bubble) {
+  padding: 9px 10px;
+  gap: 9px;
+  box-shadow: none;
 }
 
 .note-insight-panel__state p,
 .note-insight-panel__section p {
   margin: 0;
   color: var(--text-secondary);
-  line-height: 1.8;
+  line-height: 1.75;
 }
 
 .note-insight-panel__scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  margin-top: 16px;
-  padding: 0 6px 18px 0;
+  margin-top: 12px;
+  padding: 0 4px 16px 0;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
 
 .note-insight-panel__section {
-  margin-top: 14px;
-  padding: 14px;
+  margin-top: 10px;
+  padding: 12px;
   border: 1px solid rgba(216, 207, 191, 0.62);
-  border-radius: 18px;
-  background: rgba(255, 253, 249, 0.72);
+  border-radius: 14px;
+  background: rgba(255, 253, 249, 0.58);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .note-insight-panel__section > strong {
   color: var(--brand-primary);
+  font-size: 0.92rem;
 }
 
 .note-insight-panel__section--placeholder {
-  padding: 16px;
+  padding: 14px;
   border-radius: 14px;
   background: rgba(47, 93, 80, 0.06);
 }
@@ -272,19 +288,19 @@ const mascotCue = computed(() => buildNoteInsightMascotCue({
 
 .note-insight-panel__list {
   margin: 0;
-  padding-left: 18px;
+  padding-left: 17px;
   color: var(--text-secondary);
-  line-height: 1.8;
+  line-height: 1.7;
 }
 
 .note-insight-panel__list li + li {
-  margin-top: 6px;
+  margin-top: 5px;
 }
 
 .note-insight-panel__reference {
-  padding: 13px;
+  padding: 11px;
   border: 1px solid rgba(216, 207, 191, 0.62);
-  border-radius: 14px;
+  border-radius: 12px;
   background: rgba(251, 248, 242, 0.82);
   cursor: pointer;
   transition:
@@ -300,9 +316,9 @@ const mascotCue = computed(() => buildNoteInsightMascotCue({
 }
 
 .note-insight-panel__reference-title {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   color: var(--brand-primary);
-  font-size: 0.88rem;
+  font-size: 0.84rem;
 }
 
 .note-insight-panel__reference blockquote {
@@ -310,7 +326,7 @@ const mascotCue = computed(() => buildNoteInsightMascotCue({
   padding-left: 12px;
   border-left: 3px solid rgba(192, 139, 92, 0.5);
   color: var(--text-secondary);
-  line-height: 1.75;
+  line-height: 1.68;
 }
 
 @media (max-width: 1280px) {

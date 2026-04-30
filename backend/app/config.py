@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "readmind-dev-secret")
@@ -14,4 +16,5 @@ class Config:
     DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
     EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     VAULT_ROOT = os.getenv("VAULT_ROOT", str(Path.home() / "Documents/Obsidian Vault/书籍阅读"))
+    EXPORT_ROOT = os.getenv("EXPORT_ROOT", str(PROJECT_ROOT / "exports"))
     DEMO_DATA_ONLY = os.getenv("DEMO_DATA_ONLY", "0") == "1"

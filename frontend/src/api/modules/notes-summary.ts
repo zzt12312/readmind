@@ -1,5 +1,5 @@
 import { apiClient } from '@/api/client'
-import type { NoteInsightReference, NoteInsightSections } from '@/types/note'
+import type { NoteInsightExportPayload, NoteInsightExportResponse, NoteInsightReference, NoteInsightSections } from '@/types/note'
 
 export async function summarizeFilteredNotes(payload: {
   book_id?: number
@@ -18,5 +18,10 @@ export async function summarizeFilteredNotes(payload: {
     job_id?: string
     message?: string
   }>('/notes/summarize', payload)
+  return data
+}
+
+export async function exportNoteInsight(payload: NoteInsightExportPayload) {
+  const { data } = await apiClient.post<NoteInsightExportResponse>('/notes/export-insight', payload)
   return data
 }

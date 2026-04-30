@@ -19,6 +19,28 @@ export interface DashboardReviewSummary {
   mastery_rate: string
 }
 
+export interface DashboardActivationCard {
+  label: string
+  value: string
+  hint: string
+}
+
+export interface DashboardActivationAction {
+  label: string
+  path: string
+}
+
+export interface DashboardActivationReport {
+  title: string
+  summary: string
+  asset_cards: DashboardActivationCard[]
+  top_topics: string[]
+  recent_books: string[]
+  recommended_questions: string[]
+  primary_action: DashboardActivationAction
+  secondary_action: DashboardActivationAction
+}
+
 export interface DashboardDailyBriefFeedback {
   label: string
   value: string
@@ -73,6 +95,7 @@ export interface DashboardOverview {
   recent_books: DashboardRecentBook[]
   active_topics: string[]
   review_summary: DashboardReviewSummary
+  activation_report: DashboardActivationReport
   daily_brief: DashboardDailyBrief
   action_queue: DashboardActionItem[]
   recommended_review: DashboardRecommendedReview

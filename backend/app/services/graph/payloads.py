@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import quote
 
 TOPIC_STOPWORDS = {
     "",
@@ -386,6 +387,11 @@ def build_topic_clusters(
                 "book_count": len(cluster_book_ids),
                 "sample_books": sample_books,
                 "sample_excerpts": samples,
+                "actions": build_cluster_actions(
+                    ranked_component[0],
+                    ranked_component,
+                    mode="topic",
+                ),
             }
         )
 
@@ -518,6 +524,11 @@ def build_category_clusters(
                     for book in top_books
                 ],
                 "sample_excerpts": group["samples"],
+                "actions": build_cluster_actions(
+                    category_name,
+                    top_tags,
+                    mode="category",
+                ),
             }
         )
         nodes.append(
@@ -593,3 +604,40 @@ def build_graph_filters(
         "time_scopes": TIME_SCOPE_OPTIONS,
         "modes": GRAPH_MODE_OPTIONS,
     }
+
+
+def build_cluster_actions(name: str, topics: list[str], *, mode: str) -> list[dict[str, str]]:
+    focus_topic = topics[0] if topics else name
+    encoded_name = quote(name)
+    encoded_topic = quote(focus_topic)
+    question = (
+        f"我关于「{focus_topic}」的笔记里，最值得回看的观点是什么？"
+        if mode == "topic"
+        else f"我在「{name}」这个阅读领域里，最值得继续整理的问题是什么？"
+    )
+
+    actions = [
+        {
+            "label": "追问这个主题",
+            "description": "带着当前主题去问答页，让 AI 基于原始摘录整理回答。",
+            "path": f"/qa?preset={quote(question)}",
+            "type": "qa",
+        },
+        {
+            "label": "查看相关笔记",
+            "description": "回到笔记工作台，直接筛选这个主题下的原始摘录。",
+            "path": f"/notes?tag={encoded_topic}" if mode == "topic" else f"/notes?category={encoded_name}",
+            "type": "notes",
+        },
+    ]
+    if focus_topic:
+        actions.append(
+            {
+                "label": "围绕主题复习",
+                "description": "把这个主题变成一组可完成的复习卡片。",
+                "path": f"/review?tag={encoded_topic}",
+                "type": "review",
+            }
+        )
+
+    return actions

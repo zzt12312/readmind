@@ -8,16 +8,19 @@ import BookCover from '@/components/common/BookCover.vue'
 import MascotBubble from '@/components/mascot/MascotBubble.vue'
 import { isStaticDemoMode } from '@/config/demo'
 import { buildDashboardMascotCue } from '@/constants/mascotMessages'
+import { useAppStore } from '@/stores/app'
 import { useBooksStore } from '@/stores/books'
 import { useDashboardStore } from '@/stores/dashboard'
 
 const router = useRouter()
+const appStore = useAppStore()
 const dashboardStore = useDashboardStore()
 const booksStore = useBooksStore()
 const {
   metrics,
   recentBooks,
   activeTopics,
+  activationReport,
   dailyBrief,
   actionQueue,
   recommendedReview,
@@ -27,6 +30,7 @@ const shelfRef = ref<HTMLElement | null>(null)
 const isDraggingShelf = ref(false)
 const shelfAtStart = ref(true)
 const shelfAtEnd = ref(false)
+const onboardingCollapsed = ref(false)
 const dragState = {
   startX: 0,
   startScrollLeft: 0,
@@ -34,6 +38,7 @@ const dragState = {
 
 onMounted(() => {
   void dashboardStore.load()
+  void appStore.loadLlmHealth()
   requestAnimationFrame(updateShelfMask)
 })
 
@@ -79,6 +84,20 @@ function openBriefAction(path: string) {
 }
 
 const mascotCue = computed(() => buildDashboardMascotCue(actionQueue.value[0]?.title))
+const modeLabel = computed(() => {
+  if (isStaticDemoMode) return '静态演示数据'
+  if (appStore.llmHealth?.demo_mode) return '后端演示模式'
+  return '本地真实书库'
+})
+const modeDetail = computed(() => {
+  if (isStaticDemoMode || appStore.llmHealth?.demo_mode) {
+    return '当前不会读取或上传你的真实 Obsidian 数据。'
+  }
+  if (!appStore.llmHealth) return '正在确认模型和数据边界。'
+  return appStore.llmHealth.connected
+    ? `读取本地 Vault，AI 功能会调用 ${appStore.llmHealth.provider}。`
+    : '读取本地 Vault，模型不可用时会使用本地回退回答。'
+})
 const demoGuideSteps = [
   {
     label: 'Step 01',
@@ -105,6 +124,47 @@ const demoGuideSteps = [
     path: '/analytics',
   },
 ]
+const onboardingSteps = computed(() => [
+  {
+    key: 'sync',
+    label: '01',
+    title: metrics.value.length ? '阅读资产已进入工作台' : '先同步你的阅读资产',
+    hint: metrics.value.length
+      ? '首页已经能看到书籍、笔记和主题概览。'
+      : '配置 Obsidian 阅读目录，或先使用演示数据体验完整流程。',
+    path: metrics.value.length ? '/notes' : '/import',
+    done: metrics.value.length > 0,
+  },
+  {
+    key: 'value',
+    label: '02',
+    title: '看第一眼价值报告',
+    hint: activationReport.value.recommended_questions.length
+      ? '挑一个推荐问题，直接问自己的笔记。'
+      : '同步后这里会给出主题、问题和今日建议。',
+    path: activationReport.value.recommended_questions[0]
+      ? `/qa?preset=${encodeURIComponent(activationReport.value.recommended_questions[0])}`
+      : '/dashboard',
+    done: activationReport.value.top_topics.length > 0,
+  },
+  {
+    key: 'qa',
+    label: '03',
+    title: '提出第一个问题',
+    hint: '回答会保留引用，你可以收藏、导出，或把引用带去复习。',
+    path: '/qa',
+    done: false,
+  },
+  {
+    key: 'review',
+    label: '04',
+    title: '完成 5 分钟回看',
+    hint: '先复习一小组卡片，不需要一次处理全部笔记。',
+    path: '/review?goal=5',
+    done: false,
+  },
+])
+const shouldShowOnboarding = computed(() => !onboardingCollapsed.value)
 </script>
 
 <template>
@@ -118,6 +178,14 @@ const demoGuideSteps = [
           <span v-for="topic in dailyBrief.highlights.topics" :key="topic">{{ topic }}</span>
           <span v-if="dailyBrief.highlights.author">常读作者：{{ dailyBrief.highlights.author }}</span>
         </div>
+        <div class="dashboard-view__hero-actions-main">
+          <button type="button" @click="openBriefAction(activationReport.primary_action.path)">
+            {{ activationReport.primary_action.label }}
+          </button>
+          <button type="button" @click="openBriefAction(activationReport.secondary_action.path)">
+            {{ activationReport.secondary_action.label }}
+          </button>
+        </div>
         <MascotBubble
           class="dashboard-view__mascot"
           :mood="mascotCue.mood"
@@ -130,6 +198,11 @@ const demoGuideSteps = [
       </div>
 
       <div class="dashboard-view__brief-panel">
+        <div class="dashboard-view__mode-card">
+          <span>当前模式</span>
+          <strong>{{ modeLabel }}</strong>
+          <p>{{ modeDetail }}</p>
+        </div>
         <div class="dashboard-view__brief-stats">
           <article v-for="item in dailyBrief.feedback_items" :key="item.label">
             <span>{{ item.label }}</span>
@@ -145,6 +218,61 @@ const demoGuideSteps = [
             @click="openBriefAction(action.path)"
           >
             {{ action.label }}
+          </button>
+        </div>
+      </div>
+    </AppCard>
+
+    <AppCard v-if="shouldShowOnboarding" class="dashboard-view__onboarding">
+      <div class="dashboard-view__onboarding-head">
+        <div>
+          <p class="dashboard-view__hero-eyebrow">First run guide</p>
+          <h3>第一次使用，按这条路线走</h3>
+          <span>从导入到追问，再到复习沉淀，尽量让用户不用自己猜下一步。</span>
+        </div>
+        <el-button text @click="onboardingCollapsed = true">收起</el-button>
+      </div>
+      <div class="dashboard-view__onboarding-steps">
+        <button
+          v-for="step in onboardingSteps"
+          :key="step.key"
+          type="button"
+          :class="{ 'is-done': step.done }"
+          @click="openBriefAction(step.path)"
+        >
+          <em>{{ step.label }}</em>
+          <strong>{{ step.title }}</strong>
+          <span>{{ step.hint }}</span>
+        </button>
+      </div>
+    </AppCard>
+
+    <AppCard class="dashboard-view__activation">
+      <div class="dashboard-view__activation-copy">
+        <p class="dashboard-view__hero-eyebrow">First Value Report</p>
+        <h3>{{ activationReport.title }}</h3>
+        <p>{{ activationReport.summary }}</p>
+        <div class="dashboard-view__activation-topics">
+          <span v-for="topic in activationReport.top_topics" :key="topic">{{ topic }}</span>
+        </div>
+      </div>
+      <div class="dashboard-view__activation-side">
+        <div class="dashboard-view__activation-cards">
+          <article v-for="card in activationReport.asset_cards" :key="card.label">
+            <span>{{ card.label }}</span>
+            <strong>{{ card.value }}</strong>
+            <p>{{ card.hint }}</p>
+          </article>
+        </div>
+        <div class="dashboard-view__question-list">
+          <strong>可以立刻追问</strong>
+          <button
+            v-for="question in activationReport.recommended_questions"
+            :key="question"
+            type="button"
+            @click="router.push({ path: '/qa', query: { preset: question } })"
+          >
+            {{ question }}
           </button>
         </div>
       </div>
@@ -206,7 +334,15 @@ const demoGuideSteps = [
           {{ recommendedReview.book ? '打开这本书' : '进入笔记工作台' }}
         </button>
       </div>
-      <div v-if="recommendedReview.book" class="dashboard-view__recommend-book">
+      <div
+        v-if="recommendedReview.book"
+        class="dashboard-view__recommend-book"
+        role="button"
+        tabindex="0"
+        @click="openBriefAction(recommendedReview.path)"
+        @keydown.enter.prevent="openBriefAction(recommendedReview.path)"
+        @keydown.space.prevent="openBriefAction(recommendedReview.path)"
+      >
         <BookCover
           :src="recommendedReview.book.cover"
           :title="recommendedReview.book.title"
@@ -330,6 +466,29 @@ const demoGuideSteps = [
   font-weight: 800;
 }
 
+.dashboard-view__hero-actions-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.dashboard-view__hero-actions-main button {
+  padding: 12px 16px;
+  border: 1px solid rgba(47, 93, 80, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.84);
+  color: var(--brand-primary);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.dashboard-view__hero-actions-main button:first-child {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary);
+  color: #fff;
+}
+
 .dashboard-view__mascot {
   max-width: 560px;
   margin-top: 18px;
@@ -343,6 +502,34 @@ const demoGuideSteps = [
   border-radius: 26px;
   background: rgba(255, 253, 249, 0.72);
   box-shadow: 0 18px 42px rgba(47, 93, 80, 0.1);
+}
+
+.dashboard-view__mode-card {
+  padding: 14px;
+  border: 1px solid rgba(47, 93, 80, 0.14);
+  border-radius: 20px;
+  background: rgba(47, 93, 80, 0.07);
+}
+
+.dashboard-view__mode-card span {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.dashboard-view__mode-card strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--brand-primary);
+  font-size: 1.12rem;
+}
+
+.dashboard-view__mode-card p {
+  margin: 7px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.55;
 }
 
 .dashboard-view__brief-stats {
@@ -422,7 +609,113 @@ const demoGuideSteps = [
   gap: 16px;
 }
 
-.dashboard-view__demo-guide {
+.dashboard-view__activation {
+  display: grid;
+  grid-template-columns: minmax(0, 0.86fr) minmax(420px, 1fr);
+  gap: 22px;
+  align-items: stretch;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(255, 253, 249, 0.98), rgba(244, 239, 230, 0.76)),
+    var(--bg-card);
+}
+
+.dashboard-view__activation-copy h3 {
+  margin: 0 0 10px;
+  font-size: 1.55rem;
+}
+
+.dashboard-view__activation-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.dashboard-view__activation-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.dashboard-view__activation-topics span {
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(47, 93, 80, 0.08);
+  color: var(--brand-primary);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.dashboard-view__activation-side {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 14px;
+}
+
+.dashboard-view__activation-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboard-view__activation-cards article {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(216, 207, 191, 0.62);
+  border-radius: 18px;
+  background: rgba(255, 253, 249, 0.74);
+}
+
+.dashboard-view__activation-cards span {
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.dashboard-view__activation-cards strong {
+  display: block;
+  margin-top: 7px;
+  color: var(--text-primary);
+  font-size: 1.45rem;
+}
+
+.dashboard-view__activation-cards p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.dashboard-view__question-list {
+  padding: 14px;
+  border: 1px solid rgba(47, 93, 80, 0.12);
+  border-radius: 20px;
+  background: rgba(47, 93, 80, 0.06);
+}
+
+.dashboard-view__question-list strong {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--brand-primary);
+}
+
+.dashboard-view__question-list button {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(47, 93, 80, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 253, 249, 0.82);
+  color: var(--text-primary);
+  cursor: pointer;
+  line-height: 1.55;
+  text-align: left;
+}
+
+.dashboard-view__demo-guide,
+.dashboard-view__onboarding {
   padding: 22px;
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -433,30 +726,48 @@ const demoGuideSteps = [
     linear-gradient(135deg, rgba(255, 253, 249, 0.98), rgba(239, 230, 214, 0.56));
 }
 
-.dashboard-view__demo-guide-head {
+.dashboard-view__onboarding {
+  background:
+    radial-gradient(circle at 88% 8%, rgba(47, 93, 80, 0.12), transparent 30%),
+    linear-gradient(135deg, rgba(255, 253, 249, 0.98), rgba(236, 241, 234, 0.64));
+}
+
+.dashboard-view__demo-guide-head,
+.dashboard-view__onboarding-head {
   display: flex;
   min-width: 0;
   flex-direction: column;
   justify-content: center;
 }
 
-.dashboard-view__demo-guide-head h3 {
+.dashboard-view__onboarding-head {
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.dashboard-view__demo-guide-head h3,
+.dashboard-view__onboarding-head h3 {
   margin: 0 0 10px;
   font-size: 1.45rem;
 }
 
-.dashboard-view__demo-guide-head span {
+.dashboard-view__demo-guide-head span,
+.dashboard-view__onboarding-head span {
   color: var(--text-secondary);
   line-height: 1.7;
 }
 
-.dashboard-view__demo-guide-steps {
+.dashboard-view__demo-guide-steps,
+.dashboard-view__onboarding-steps {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
-.dashboard-view__demo-guide-steps button {
+.dashboard-view__demo-guide-steps button,
+.dashboard-view__onboarding-steps button {
   min-width: 0;
   padding: 15px;
   border: 1px solid rgba(47, 93, 80, 0.12);
@@ -471,7 +782,8 @@ const demoGuideSteps = [
     transform 0.16s ease;
 }
 
-.dashboard-view__demo-guide-steps button:hover {
+.dashboard-view__demo-guide-steps button:hover,
+.dashboard-view__onboarding-steps button:hover {
   border-color: rgba(47, 93, 80, 0.26);
   box-shadow: 0 14px 26px rgba(47, 93, 80, 0.08);
   transform: translateY(-2px);
@@ -479,11 +791,15 @@ const demoGuideSteps = [
 
 .dashboard-view__demo-guide-steps em,
 .dashboard-view__demo-guide-steps strong,
-.dashboard-view__demo-guide-steps span {
+.dashboard-view__demo-guide-steps span,
+.dashboard-view__onboarding-steps em,
+.dashboard-view__onboarding-steps strong,
+.dashboard-view__onboarding-steps span {
   display: block;
 }
 
-.dashboard-view__demo-guide-steps em {
+.dashboard-view__demo-guide-steps em,
+.dashboard-view__onboarding-steps em {
   color: var(--brand-primary);
   font-size: 0.72rem;
   font-style: normal;
@@ -492,12 +808,18 @@ const demoGuideSteps = [
   text-transform: uppercase;
 }
 
-.dashboard-view__demo-guide-steps strong {
+.dashboard-view__onboarding-steps button.is-done em {
+  color: #2f7d57;
+}
+
+.dashboard-view__demo-guide-steps strong,
+.dashboard-view__onboarding-steps strong {
   margin-top: 8px;
   font-size: 1rem;
 }
 
-.dashboard-view__demo-guide-steps span {
+.dashboard-view__demo-guide-steps span,
+.dashboard-view__onboarding-steps span {
   margin-top: 7px;
   color: var(--text-secondary);
   font-size: 0.84rem;
@@ -605,6 +927,19 @@ const demoGuideSteps = [
   border: 1px solid rgba(216, 207, 191, 0.68);
   border-radius: 22px;
   background: rgba(255, 253, 249, 0.7);
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.dashboard-view__recommend-book:hover,
+.dashboard-view__recommend-book:focus-visible {
+  border-color: rgba(47, 93, 80, 0.28);
+  box-shadow: 0 16px 28px rgba(47, 93, 80, 0.1);
+  outline: 0;
+  transform: translateY(-2px);
 }
 
 .dashboard-view__recommend-book :deep(.book-cover) {
@@ -741,12 +1076,16 @@ const demoGuideSteps = [
   .dashboard-view__hero,
   .dashboard-view__action-grid,
   .dashboard-view__recommend,
+  .dashboard-view__activation,
+  .dashboard-view__activation-side,
   .dashboard-view__demo-guide,
+  .dashboard-view__onboarding,
   .dashboard-view__grid {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-view__demo-guide-steps {
+  .dashboard-view__demo-guide-steps,
+  .dashboard-view__onboarding-steps {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -761,7 +1100,8 @@ const demoGuideSteps = [
     grid-template-columns: 1fr;
   }
 
-  .dashboard-view__demo-guide-steps {
+  .dashboard-view__demo-guide-steps,
+  .dashboard-view__onboarding-steps {
     grid-template-columns: 1fr;
   }
 }
