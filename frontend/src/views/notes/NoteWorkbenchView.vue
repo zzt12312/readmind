@@ -4,13 +4,10 @@ import { storeToRefs } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { exportNoteInsight, summarizeFilteredNotes } from '@/api/modules/notes-summary'
-import AppCard from '@/components/base/AppCard.vue'
-import AppEmpty from '@/components/base/AppEmpty.vue'
-import NoteCard from '@/components/notes/NoteCard.vue'
 import NoteInsightPanel from '@/components/notes/NoteInsightPanel.vue'
+import NoteResultsColumn from '@/components/notes/NoteResultsColumn.vue'
 import NoteToolbar from '@/components/notes/NoteToolbar.vue'
-import QueryRewriteTip from '@/components/notes/QueryRewriteTip.vue'
-import MascotBubble from '@/components/mascot/MascotBubble.vue'
+import NoteWorkbenchHero from '@/components/notes/NoteWorkbenchHero.vue'
 import { buildEmptyNotesMascotCue } from '@/constants/mascotMessages'
 import { useJobPolling } from '@/composables/useJobPolling'
 import { useAppStore } from '@/stores/app'
@@ -428,18 +425,11 @@ async function loadMore() {
 
 <template>
   <div class="note-workbench">
-    <AppCard class="note-workbench__hero">
-      <div>
-        <p class="note-workbench__eyebrow">Reading Notes Studio</p>
-        <h2>{{ noteHeroTitle }}</h2>
-        <p>{{ noteHeroDescription }}</p>
-      </div>
-      <div class="note-workbench__hero-stats">
-        <span>当前结果</span>
-        <strong>{{ pagination.total }}</strong>
-        <em>条笔记</em>
-      </div>
-    </AppCard>
+    <NoteWorkbenchHero
+      :title="noteHeroTitle"
+      :description="noteHeroDescription"
+      :total="pagination.total"
+    />
 
     <NoteToolbar
       v-model:keyword="keyword"
@@ -460,36 +450,17 @@ async function loadMore() {
     />
 
     <section class="note-workbench__grid">
-      <div v-loading="loading" class="note-workbench__center">
-        <div class="note-workbench__result-bar">
-          <span>{{ currentBook ? currentBook.title : '全部书籍' }}</span>
-          <strong>{{ pagination.total }} 条笔记</strong>
-        </div>
-        <QueryRewriteTip v-if="queryRewrite" :query-rewrite="queryRewrite" />
-        <NoteCard
-          v-for="note in notes"
-          :key="note.id"
-          :note="note"
-          :active="note.id === activeNoteId"
-          :keyword="keyword"
-        />
-
-        <AppEmpty
-          v-if="!loading && notes.length === 0"
-          title="没有找到匹配的笔记"
-          description="试试搜索章节名、观点关键词或主题标签。"
-        >
-          <MascotBubble
-            class="note-workbench__empty-mascot"
-            :mood="emptyNotesMascotCue.mood"
-            :message="emptyNotesMascotCue.message"
-            compact
-          />
-        </AppEmpty>
-        <div v-else-if="pagination.has_more" class="note-workbench__load-more">
-          <el-button round :loading="loading" @click="loadMore">加载更多</el-button>
-        </div>
-      </div>
+      <NoteResultsColumn
+        :loading="loading"
+        :notes="notes"
+        :active-note-id="activeNoteId"
+        :keyword="keyword"
+        :scope-title="currentBook ? currentBook.title : '全部书籍'"
+        :pagination="pagination"
+        :query-rewrite="queryRewrite"
+        :empty-mascot-cue="emptyNotesMascotCue"
+        @load-more="loadMore"
+      />
 
       <NoteInsightPanel
         :refreshing="refreshingInsight"
@@ -517,86 +488,6 @@ async function loadMore() {
   gap: 18px;
 }
 
-.note-workbench__hero {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  align-items: flex-end;
-  padding: 28px;
-  background:
-    radial-gradient(circle at 92% 16%, rgba(192, 139, 92, 0.22), transparent 30%),
-    linear-gradient(135deg, rgba(47, 93, 80, 0.12), rgba(255, 253, 249, 0.96) 58%),
-    var(--bg-card);
-}
-
-.note-workbench__hero::after {
-  content: '';
-  position: absolute;
-  right: -52px;
-  bottom: -68px;
-  width: 220px;
-  height: 220px;
-  border-radius: 50%;
-  border: 1px solid rgba(47, 93, 80, 0.1);
-  background: rgba(255, 253, 249, 0.34);
-}
-
-.note-workbench__hero > * {
-  position: relative;
-  z-index: 1;
-}
-
-.note-workbench__eyebrow {
-  margin: 0 0 10px;
-  color: var(--brand-primary);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.note-workbench__hero h2 {
-  max-width: 48rem;
-  margin: 0 0 10px;
-  font-size: clamp(1.5rem, 2vw, 2.1rem);
-  letter-spacing: -0.03em;
-}
-
-.note-workbench__hero p:last-child {
-  max-width: 46rem;
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.8;
-}
-
-.note-workbench__hero-stats {
-  min-width: 132px;
-  padding: 16px;
-  border-radius: 22px;
-  text-align: center;
-  background: rgba(255, 253, 249, 0.74);
-  border: 1px solid rgba(216, 207, 191, 0.72);
-  box-shadow: var(--shadow-sm);
-}
-
-.note-workbench__hero-stats span,
-.note-workbench__hero-stats em {
-  display: block;
-  color: var(--text-tertiary);
-  font-size: 0.82rem;
-  font-style: normal;
-}
-
-.note-workbench__hero-stats strong {
-  display: block;
-  margin: 4px 0;
-  color: var(--brand-primary);
-  font-size: 2rem;
-  line-height: 1;
-}
-
 .note-workbench__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(390px, 0.42fr);
@@ -604,69 +495,9 @@ async function loadMore() {
   align-items: start;
 }
 
-.note-workbench__center {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.note-workbench__load-more {
-  display: flex;
-  justify-content: center;
-  padding: 8px 0 4px;
-}
-
-.note-workbench__empty-mascot {
-  max-width: 460px;
-  margin: 18px auto 0;
-  text-align: left;
-}
-
-.note-workbench__result-bar {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 12px 16px;
-  border: 1px solid rgba(216, 207, 191, 0.68);
-  border-radius: 999px;
-  background: rgba(255, 253, 249, 0.76);
-  color: var(--text-tertiary);
-  font-size: 0.9rem;
-}
-
-.note-workbench__result-bar strong {
-  color: var(--text-primary);
-}
-
-.note-workbench__tag-list {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 @media (max-width: 1280px) {
   .note-workbench__grid {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 768px) {
-  .note-workbench__hero {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 22px;
-  }
-
-  .note-workbench__hero-stats {
-    width: 100%;
-    text-align: left;
-  }
-
-  .note-workbench__result-bar {
-    align-items: flex-start;
-    border-radius: 18px;
-    flex-direction: column;
   }
 }
 </style>

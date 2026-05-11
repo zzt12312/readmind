@@ -1,14 +1,10 @@
 import { defineStore } from 'pinia'
-import { createQaDeposit, exportQaSession } from '@/api/modules/qa'
+import { exportQaSession } from '@/api/modules/qa'
 import {
   createMessageId,
   createSession,
   createSessionTitle,
-  createInsightCardId,
-  createQuestionWorkspaceId,
-  createReviewSeedId,
   createSavedAnswerId,
-  createUnderstandingId,
   clearQaLocalData,
   loadInsightCards,
   loadQuestionWorkspaces,
@@ -24,6 +20,13 @@ import {
   saveUnderstandings,
   sortSessions,
 } from '@/services/qaSessionStorage'
+import {
+  buildQuestionWorkspace,
+  createInsightCardFromAnswer,
+  createReviewSeedFromAnswer,
+  createUnderstandingFromAnswer,
+  getQaAnswerContext,
+} from '@/services/qaDeposits'
 import { streamQuestion } from '@/services/qaStreamClient'
 import type { QaAskPayload, QaEvidenceSummary, QaExportResponse, QaInsightCard, QaMessage, QaQuestionWorkspace, QaReference, QaReviewSeed, QaSavedAnswer, QaSession, QaStatusPayload, QaUnderstanding, QueryRewriteSummary } from '@/types/qa'
 
@@ -254,35 +257,9 @@ export const useQaStore = defineStore('qa', {
       }
     },
     saveLatestAnswerToWorkspace(messageId: string) {
-      const assistantIndex = this.messages.findIndex((message) => message.id === messageId)
-      const assistantMessage = this.messages[assistantIndex]
-      if (!assistantMessage || assistantMessage.role !== 'assistant' || !assistantMessage.content.trim()) {
-        throw new Error('当前没有可沉淀的回答')
-      }
-      const userMessage = [...this.messages.slice(0, assistantIndex)]
-        .reverse()
-        .find((message) => message.role === 'user')
-      const question = userMessage?.content.trim() || this.currentSession?.title || '未命名问题'
-      const title = createSessionTitle(question)
-      const references = assistantMessage.references ?? []
-      const now = new Date().toISOString()
-      const existing = this.questionWorkspaces.find((item) => item.question === question)
-      const workspace: QaQuestionWorkspace = {
-        id: existing?.id ?? createQuestionWorkspaceId(),
-        title: existing?.title || title,
-        question,
-        latest_answer: assistantMessage.content,
-        references,
-        scope: this.scope,
-        book_id: this.bookId,
-        status: existing?.status ?? 'open',
-        evidence_count: references.length,
-        next_action: references.length >= 3
-          ? '证据已经比较充分，可以整理成写作素材或进入复习。'
-          : '继续追问，补充更多引用证据。',
-        created_at: existing?.created_at ?? now,
-        updated_at: now,
-      }
+      const context = this.getAnswerContext(messageId)
+      const existing = this.questionWorkspaces.find((item) => item.question === context.question)
+      const workspace = buildQuestionWorkspace(context, { scope: this.scope, bookId: this.bookId }, existing)
       this.questionWorkspaces = saveQuestionWorkspaces([
         workspace,
         ...this.questionWorkspaces.filter((item) => item.id !== workspace.id),
@@ -327,68 +304,18 @@ export const useQaStore = defineStore('qa', {
       }
     },
     getAnswerContext(messageId: string) {
-      const assistantIndex = this.messages.findIndex((message) => message.id === messageId)
-      const assistantMessage = this.messages[assistantIndex]
-      if (!assistantMessage || assistantMessage.role !== 'assistant' || !assistantMessage.content.trim()) {
-        throw new Error('当前没有可沉淀的回答')
-      }
-      const userMessage = [...this.messages.slice(0, assistantIndex)]
-        .reverse()
-        .find((message) => message.role === 'user')
-      const question = userMessage?.content.trim() || this.currentSession?.title || '未命名问题'
-      return {
-        question,
-        title: createSessionTitle(question),
-        answer: assistantMessage.content,
-        references: assistantMessage.references ?? [],
-      }
+      return getQaAnswerContext(this.messages, messageId, this.currentSession?.title || '未命名问题')
     },
     async saveLatestAsInsightCard(messageId: string) {
       const context = this.getAnswerContext(messageId)
-      const payload = {
-        deposit_type: 'insight_card' as const,
-        title: `洞察：${context.title}`,
-        question: context.question,
-        content: buildInsightSummary(context.answer),
-        references: context.references,
-        scope: this.scope,
-        book_id: this.bookId,
-      }
-      await createQaDeposit(payload)
-      const card: QaInsightCard = {
-        id: createInsightCardId(),
-        title: payload.title,
-        question: payload.question,
-        summary: payload.content,
-        references: payload.references,
-        created_at: new Date().toISOString(),
-      }
+      const card = await createInsightCardFromAnswer(context, { scope: this.scope, bookId: this.bookId })
       this.insightCards = saveInsightCards([card, ...this.insightCards])
       return card
     },
     async saveLatestAsUnderstanding(messageId: string) {
       const context = this.getAnswerContext(messageId)
-      const now = new Date().toISOString()
       const existing = this.understandings.find((item) => item.question === context.question)
-      const payload = {
-        deposit_type: 'understanding' as const,
-        title: existing?.title || `我的理解：${context.title}`,
-        question: context.question,
-        content: context.answer,
-        references: context.references,
-        scope: this.scope,
-        book_id: this.bookId,
-      }
-      await createQaDeposit(payload)
-      const understanding: QaUnderstanding = {
-        id: existing?.id ?? createUnderstandingId(),
-        title: payload.title,
-        question: payload.question,
-        content: payload.content,
-        references: payload.references,
-        created_at: existing?.created_at ?? now,
-        updated_at: now,
-      }
+      const understanding = await createUnderstandingFromAnswer(context, { scope: this.scope, bookId: this.bookId }, existing)
       this.understandings = saveUnderstandings([
         understanding,
         ...this.understandings.filter((item) => item.id !== understanding.id),
@@ -397,31 +324,7 @@ export const useQaStore = defineStore('qa', {
     },
     async addLatestToReview(messageId: string) {
       const context = this.getAnswerContext(messageId)
-      if (!context.references.length) {
-        throw new Error('当前回答没有引用，暂时无法加入复习')
-      }
-      const noteIds = [...new Set(context.references.map((reference) => reference.note_id))]
-      const payload = {
-        deposit_type: 'review_seed' as const,
-        title: `复习：${context.title}`,
-        question: context.question,
-        content: context.answer,
-        references: context.references,
-        scope: this.scope,
-        book_id: context.references[0]?.book_id ?? this.bookId,
-        note_ids: noteIds,
-        status: 'queued',
-      }
-      await createQaDeposit(payload)
-      const seed: QaReviewSeed = {
-        id: createReviewSeedId(),
-        title: payload.title,
-        question: payload.question,
-        references: payload.references,
-        book_id: payload.book_id,
-        note_ids: noteIds,
-        created_at: new Date().toISOString(),
-      }
+      const seed = await createReviewSeedFromAnswer(context, { scope: this.scope, bookId: this.bookId })
       this.reviewSeeds = saveReviewSeeds([seed, ...this.reviewSeeds])
       return seed
     },
@@ -623,9 +526,3 @@ export const useQaStore = defineStore('qa', {
     },
   },
 })
-
-function buildInsightSummary(answer: string) {
-  const normalized = answer.replace(/\s+/g, ' ').trim()
-  if (normalized.length <= 220) return normalized
-  return `${normalized.slice(0, 220)}...`
-}

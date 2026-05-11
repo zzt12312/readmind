@@ -8,7 +8,7 @@ ReadMind solves a familiar problem for heavy readers: you highlight, export, and
 
 ## Live Demo
 
-[Open the ReadMind demo](http://43.139.112.45:3000)
+[Open the ReadMind demo](https://readmind.site)
 
 The demo uses built-in static sample data. It does not read or upload your real Obsidian vault, but it lets you try the library, note workspace, Qianqian AI chat, insight generation, knowledge graph, review center, and analytics dashboard.
 
@@ -253,11 +253,12 @@ See [docs/API.md](docs/API.md) for the full API reference.
 
 If this is your first time exploring the repository, start here:
 
-1. [DEMO_SITE_GUIDE.md](DEMO_SITE_GUIDE.md)
-2. [docs/LEARNING_PATH.md](docs/LEARNING_PATH.md)
-3. [docs/API.md](docs/API.md)
-4. Read the feature overview and screenshots in this README
-5. Run the demo mode and try the core workflow
+1. [docs/CONTRIBUTOR_START.md](docs/CONTRIBUTOR_START.md)
+2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+3. [DEMO_SITE_GUIDE.md](DEMO_SITE_GUIDE.md)
+4. [docs/LEARNING_PATH.md](docs/LEARNING_PATH.md)
+5. [docs/API.md](docs/API.md)
+6. Run the demo mode and try the core workflow
 
 ## One-Line Pitch
 

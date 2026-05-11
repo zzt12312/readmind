@@ -4,15 +4,14 @@ import type { ComponentPublicInstance } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
-import AppActionGrid from '@/components/base/AppActionGrid.vue'
 import AppCard from '@/components/base/AppCard.vue'
-import AppStatusStrip from '@/components/base/AppStatusStrip.vue'
+import QaAnswerFollowups from '@/components/qa/QaAnswerFollowups.vue'
 import QaConversation from '@/components/qa/QaConversation.vue'
+import QaHero from '@/components/qa/QaHero.vue'
 import QaHistoryPanel from '@/components/qa/QaHistoryPanel.vue'
 import QaInputBox from '@/components/qa/QaInputBox.vue'
 import QaReferencePanel from '@/components/qa/QaReferencePanel.vue'
 import QaStatusPanel from '@/components/qa/QaStatusPanel.vue'
-import MascotBubble from '@/components/mascot/MascotBubble.vue'
 import { useAppStore } from '@/stores/app'
 import { useBooksStore } from '@/stores/books'
 import { useQaStore } from '@/stores/qa'
@@ -94,6 +93,8 @@ const conversationMeta = computed(() => [
     value: currentSession.value ? '已恢复历史对话' : '当前新对话',
   },
 ])
+const heroScopeLabel = computed(() => (scope.value === 'current-book' ? '当前书籍' : '检索范围'))
+const heroScopeValue = computed(() => (scope.value === 'current-book' ? (currentScopedBook.value?.title || '待选择') : '全部书籍'))
 const depositActions = computed(() => [
   {
     id: 'workspace',
@@ -452,26 +453,11 @@ watch(
 
 <template>
   <div class="qa-view">
-    <AppCard class="qa-view__hero">
-      <div>
-        <p class="qa-view__eyebrow">Ask Your Reading Memory</p>
-        <h2>让签签陪你追问自己的读书笔记。</h2>
-        <p>
-          选择全库或单本书范围，签签会先检索相关摘录，再带着引用来源整理回答。每一次追问都能回到原始笔记。
-        </p>
-        <MascotBubble
-          class="qa-view__mascot"
-          :mood="mascotCue.mood"
-          :message="mascotCue.message"
-          :celebrating="mascotCue.celebrating"
-          compact
-        />
-      </div>
-      <div class="qa-view__hero-meta">
-        <span>{{ scope === 'current-book' ? '当前书籍' : '检索范围' }}</span>
-        <strong>{{ scope === 'current-book' ? (currentScopedBook?.title || '待选择') : '全部书籍' }}</strong>
-      </div>
-    </AppCard>
+    <QaHero
+      :mascot-cue="mascotCue"
+      :scope-label="heroScopeLabel"
+      :scope-value="heroScopeValue"
+    />
 
     <section class="qa-view__layout">
       <QaHistoryPanel
@@ -530,75 +516,25 @@ watch(
           @jump-to-note="jumpToNote"
         />
 
-        <div v-if="latestAssistantMessage" class="qa-view__followups">
-          <div class="qa-view__answer-toolbar">
-            <AppStatusStrip :items="conversationMeta" />
-            <div class="qa-view__feedback-actions">
-              <el-button
-                round
-                :type="latestAssistantMessage.feedback === 'up' ? 'primary' : 'default'"
-                @click="qaStore.setMessageFeedback(latestAssistantMessage.id, 'up')"
-              >
-                有帮助
-              </el-button>
-              <el-button
-                round
-                :type="latestAssistantMessage.feedback === 'down' ? 'warning' : 'default'"
-                @click="qaStore.setMessageFeedback(latestAssistantMessage.id, 'down')"
-              >
-                不够准确
-              </el-button>
-              <el-button round :disabled="loading" @click="qaStore.regenerateLastAnswer">重新生成这一轮</el-button>
-              <el-button
-                round
-                :type="latestAnswerSaved ? 'success' : 'default'"
-                :disabled="loading || !latestAssistantMessage"
-                @click="toggleSaveLatestAnswer"
-              >
-                {{ latestAnswerSaved ? '已收藏' : '收藏回答' }}
-              </el-button>
-              <el-button
-                round
-                :type="latestWorkspace ? 'success' : 'default'"
-                :disabled="loading || !latestAssistantMessage"
-                @click="saveLatestToWorkspace"
-              >
-                {{ latestWorkspace ? '更新问题' : '沉淀为问题' }}
-              </el-button>
-              <el-button
-                round
-                :loading="qaStore.exporting"
-                :disabled="loading || !hasExportableMessages"
-                @click="exportConversation"
-              >
-                导出 Markdown
-              </el-button>
-            </div>
-          </div>
-          <strong class="qa-view__followup-title">继续追问</strong>
-          <div class="qa-view__followup-list">
-            <el-button v-for="prompt in followupPrompts" :key="prompt" round @click="useFollowupPrompt(prompt)">
-              {{ prompt }}
-            </el-button>
-          </div>
-          <div class="qa-view__deposit">
-            <div class="qa-view__deposit-copy">
-              <div class="qa-view__deposit-heading">
-                <strong>{{ latestWorkspace ? '问题已进入工作台' : '沉淀这次回答' }}</strong>
-                <el-tag v-if="latestWorkspace" round effect="plain">
-                  {{ latestWorkspace.evidence_count }} 条证据
-                </el-tag>
-              </div>
-              <p>
-                {{ latestWorkspace
-                  ? `已沉淀为问题。${latestWorkspace.next_action}`
-                  : '把这次回答保存成洞察、复习线索或自己的理解，让 AI 结果真正留下来。'
-                }}
-              </p>
-            </div>
-            <AppActionGrid :actions="depositActions" @action="handleDepositAction" />
-          </div>
-        </div>
+        <QaAnswerFollowups
+          v-if="latestAssistantMessage"
+          :latest-assistant-message="latestAssistantMessage"
+          :conversation-meta="conversationMeta"
+          :followup-prompts="followupPrompts"
+          :deposit-actions="depositActions"
+          :loading="loading"
+          :exporting="qaStore.exporting"
+          :has-exportable-messages="hasExportableMessages"
+          :latest-answer-saved="latestAnswerSaved"
+          :latest-workspace="latestWorkspace"
+          @feedback="qaStore.setMessageFeedback"
+          @regenerate="qaStore.regenerateLastAnswer"
+          @toggle-save="toggleSaveLatestAnswer"
+          @save-workspace="saveLatestToWorkspace"
+          @export-conversation="exportConversation"
+          @use-followup="useFollowupPrompt"
+          @deposit-action="handleDepositAction"
+        />
 
         <QaInputBox
           v-model:draft="draft"
@@ -630,69 +566,6 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 18px;
-}
-
-.qa-view__hero {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  align-items: flex-end;
-  padding: 28px;
-  background:
-    radial-gradient(circle at 88% 14%, rgba(47, 93, 80, 0.2), transparent 28%),
-    linear-gradient(135deg, rgba(192, 139, 92, 0.13), rgba(255, 253, 249, 0.96) 62%),
-    var(--bg-card);
-}
-
-.qa-view__eyebrow {
-  margin: 0 0 10px;
-  color: var(--brand-primary);
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.qa-view__hero h2 {
-  max-width: 50rem;
-  margin: 0 0 10px;
-  font-size: clamp(1.6rem, 2.4vw, 2.4rem);
-  letter-spacing: -0.04em;
-}
-
-.qa-view__mascot {
-  max-width: 560px;
-  margin-top: 16px;
-}
-
-.qa-view__hero p:last-child {
-  max-width: 48rem;
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.8;
-}
-
-.qa-view__hero-meta {
-  min-width: 180px;
-  padding: 16px;
-  border: 1px solid rgba(216, 207, 191, 0.72);
-  border-radius: 22px;
-  background: rgba(255, 253, 249, 0.76);
-  box-shadow: var(--shadow-sm);
-}
-
-.qa-view__hero-meta span {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--text-tertiary);
-  font-size: 0.8rem;
-}
-
-.qa-view__hero-meta strong {
-  color: var(--brand-primary);
-  line-height: 1.45;
 }
 
 .qa-view__layout {
@@ -760,82 +633,6 @@ watch(
   color: #9a6131;
 }
 
-.qa-view__followups {
-  margin-top: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.qa-view__answer-toolbar {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  align-items: start;
-  padding: 12px;
-  border: 1px solid rgba(47, 93, 80, 0.1);
-  border-radius: 16px;
-  background:
-    linear-gradient(135deg, rgba(47, 93, 80, 0.05), rgba(255, 253, 249, 0.72)),
-    rgba(255, 253, 249, 0.72);
-}
-
-.qa-view__feedback-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  min-width: 0;
-}
-
-.qa-view__followup-title {
-  display: block;
-}
-
-.qa-view__followup-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.qa-view__deposit {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 4px;
-  padding: 15px;
-  border: 1px solid rgba(47, 93, 80, 0.13);
-  border-radius: 16px;
-  background:
-    linear-gradient(135deg, rgba(47, 93, 80, 0.07), rgba(192, 139, 92, 0.06)),
-    var(--bg-card);
-}
-
-.qa-view__deposit-copy {
-  min-width: 0;
-}
-
-.qa-view__deposit-heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.qa-view__deposit strong,
-.qa-view__deposit p {
-  display: block;
-}
-
-.qa-view__deposit p {
-  margin: 5px 0 0;
-  color: var(--text-secondary);
-  font-size: 0.88rem;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-
 @media (max-width: 1180px) {
   .qa-view__layout {
     grid-template-columns: 1fr;
@@ -846,21 +643,5 @@ watch(
     height: auto;
   }
 
-  .qa-view__answer-toolbar {
-    grid-template-columns: 1fr;
-  }
-
 }
-@media (max-width: 768px) {
-  .qa-view__hero {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 22px;
-  }
-
-  .qa-view__hero-meta {
-    width: 100%;
-  }
-}
-
 </style>

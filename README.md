@@ -8,7 +8,7 @@ ReadMind 试图解决一个很常见的问题：读了很多书、划了很多�
 
 ## 在线体验
 
-[打开 ReadMind 演示站](http://43.139.112.45:3000)
+[打开 ReadMind 演示站](https://readmind.site)
 
 演示站使用静态演示缓存，不会读取或上传你的真实 Obsidian 数据，但可以体验书库、笔记工作台、签签问答、AI 洞察、知识图谱、复习中心和数据看板。
 
@@ -253,11 +253,12 @@ readmind/
 
 如果你是第一次看这个仓库，建议按下面顺序了解：
 
-1. [DEMO_SITE_GUIDE.md](DEMO_SITE_GUIDE.md)
-2. [docs/LEARNING_PATH.md](docs/LEARNING_PATH.md)
-3. [docs/API.md](docs/API.md)
-4. 阅读本 README 中的功能说明与界面预览
-5. 直接运行演示模式体验核心流程
+1. [docs/CONTRIBUTOR_START.md](docs/CONTRIBUTOR_START.md)
+2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+3. [DEMO_SITE_GUIDE.md](DEMO_SITE_GUIDE.md)
+4. [docs/LEARNING_PATH.md](docs/LEARNING_PATH.md)
+5. [docs/API.md](docs/API.md)
+6. 直接运行演示模式体验核心流程
 
 ## 适合对外介绍的一句话
 

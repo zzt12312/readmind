@@ -100,6 +100,9 @@ const pageMeta = computed(() => {
       <main class="main-layout__page">
         <RouterView />
       </main>
+      <footer class="main-layout__footer">
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">粤ICP备2026056029号-1</a>
+      </footer>
     </div>
   </div>
 </template>
@@ -130,6 +133,21 @@ const pageMeta = computed(() => {
   padding: 24px 24px 32px;
 }
 
+.main-layout__footer {
+  padding: 0 24px 18px;
+  text-align: center;
+}
+
+.main-layout__footer a {
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.main-layout__footer a:hover {
+  color: var(--brand-primary);
+}
+
 @media (max-width: 1100px) {
   .main-layout {
     grid-template-columns: 88px minmax(0, 1fr);
@@ -147,6 +165,10 @@ const pageMeta = computed(() => {
 
   .main-layout__page {
     padding: 16px;
+  }
+
+  .main-layout__footer {
+    padding: 0 16px 16px;
   }
 }
 </style>
